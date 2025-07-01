@@ -1,26 +1,31 @@
+// 导入必要的依赖库
 import React from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeRaw from 'rehype-raw';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { tomorrow } from 'react-syntax-highlighter/dist/cjs/styles/prism';
-import Mermaid from './Mermaid';
+import ReactMarkdown from 'react-markdown'; // 用于解析和渲染 Markdown 内容
+import remarkGfm from 'remark-gfm'; // 支持 GitHub Flavored Markdown (GFM)
+import rehypeRaw from 'rehype-raw'; // 允许在 Markdown 中直接插入 HTML
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'; // 代码高亮库
+import { tomorrow } from 'react-syntax-highlighter/dist/cjs/styles/prism'; // 代码高亮样式
+import Mermaid from './Mermaid'; // 自定义 Mermaid 图表组件
 
+// 定义组件的 props 接口
 interface MarkdownProps {
-  content: string;
+  content: string; // Markdown 格式的文本内容
 }
 
+// 定义 Markdown 组件
 const Markdown: React.FC<MarkdownProps> = ({ content }) => {
-  // Define markdown components
+  // 定义 Markdown 渲染时的自定义组件映射
   const MarkdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'] = {
+    // 段落标签 p 的自定义样式
     p({ children, ...props }: { children?: React.ReactNode }) {
       return <p className="mb-3 text-sm leading-relaxed dark:text-white" {...props}>{children}</p>;
     },
+    // 标题 h1 的自定义样式
     h1({ children, ...props }: { children?: React.ReactNode }) {
       return <h1 className="text-xl font-bold mt-6 mb-3 dark:text-white" {...props}>{children}</h1>;
     },
+    // 标题 h2 的自定义样式，支持 ReAct 特殊标题样式
     h2({ children, ...props }: { children?: React.ReactNode }) {
-      // Special styling for ReAct headings
       if (children && typeof children === 'string') {
         const text = children.toString();
         if (text.includes('Thought') || text.includes('Action') || text.includes('Observation') || text.includes('Answer')) {
@@ -42,21 +47,27 @@ const Markdown: React.FC<MarkdownProps> = ({ content }) => {
       }
       return <h2 className="text-lg font-bold mt-5 mb-3 dark:text-white" {...props}>{children}</h2>;
     },
+    // 标题 h3 的自定义样式
     h3({ children, ...props }: { children?: React.ReactNode }) {
       return <h3 className="text-base font-semibold mt-4 mb-2 dark:text-white" {...props}>{children}</h3>;
     },
+    // 标题 h4 的自定义样式
     h4({ children, ...props }: { children?: React.ReactNode }) {
       return <h4 className="text-sm font-semibold mt-3 mb-2 dark:text-white" {...props}>{children}</h4>;
     },
+    // 无序列表 ul 的自定义样式
     ul({ children, ...props }: { children?: React.ReactNode }) {
       return <ul className="list-disc pl-6 mb-4 text-sm dark:text-white space-y-2" {...props}>{children}</ul>;
     },
+    // 有序列表 ol 的自定义样式
     ol({ children, ...props }: { children?: React.ReactNode }) {
       return <ol className="list-decimal pl-6 mb-4 text-sm dark:text-white space-y-2" {...props}>{children}</ol>;
     },
+    // 列表项 li 的自定义样式
     li({ children, ...props }: { children?: React.ReactNode }) {
       return <li className="mb-2 text-sm leading-relaxed dark:text-white" {...props}>{children}</li>;
     },
+    // 链接 a 的自定义样式
     a({ children, href, ...props }: { children?: React.ReactNode; href?: string }) {
       return (
         <a
@@ -70,6 +81,7 @@ const Markdown: React.FC<MarkdownProps> = ({ content }) => {
         </a>
       );
     },
+    // 引用 blockquote 的自定义样式
     blockquote({ children, ...props }: { children?: React.ReactNode }) {
       return (
         <blockquote
@@ -80,6 +92,7 @@ const Markdown: React.FC<MarkdownProps> = ({ content }) => {
         </blockquote>
       );
     },
+    // 表格 table 的自定义样式
     table({ children, ...props }: { children?: React.ReactNode }) {
       return (
         <div className="overflow-x-auto my-6 rounded-md">
@@ -89,15 +102,19 @@ const Markdown: React.FC<MarkdownProps> = ({ content }) => {
         </div>
       );
     },
+    // 表头 thead 的自定义样式
     thead({ children, ...props }: { children?: React.ReactNode }) {
       return <thead className="bg-gray-100 dark:bg-gray-800" {...props}>{children}</thead>;
     },
+    // 表体 tbody 的自定义样式
     tbody({ children, ...props }: { children?: React.ReactNode }) {
       return <tbody className="divide-y divide-gray-200 dark:divide-gray-700" {...props}>{children}</tbody>;
     },
+    // 表格行 tr 的自定义样式
     tr({ children, ...props }: { children?: React.ReactNode }) {
       return <tr className="hover:bg-gray-50 dark:hover:bg-gray-900" {...props}>{children}</tr>;
     },
+    // 表头单元格 th 的自定义样式
     th({ children, ...props }: { children?: React.ReactNode }) {
       return (
         <th
@@ -108,21 +125,22 @@ const Markdown: React.FC<MarkdownProps> = ({ content }) => {
         </th>
       );
     },
+    // 表格单元格 td 的自定义样式
     td({ children, ...props }: { children?: React.ReactNode }) {
       return <td className="px-4 py-3 border-t border-gray-200 dark:border-gray-700" {...props}>{children}</td>;
     },
+    // 代码块 code 的自定义样式，支持 Mermaid 图表和普通代码块
     code(props: {
       inline?: boolean;
       className?: string;
       children?: React.ReactNode;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      [key: string]: any; // Using any here as it's required for ReactMarkdown components
+      [key: string]: any; // 使用 any 是因为 ReactMarkdown 组件需要此属性
     }) {
       const { inline, className, children, ...otherProps } = props;
       const match = /language-(\w+)/.exec(className || '');
       const codeContent = children ? String(children).replace(/\n$/, '') : '';
 
-      // Handle Mermaid diagrams
+      // 处理 Mermaid 图表
       if (!inline && match && match[1] === 'mermaid') {
         return (
           <div className="my-8 bg-gray-50 dark:bg-gray-800 rounded-md overflow-hidden shadow-sm">
@@ -135,7 +153,7 @@ const Markdown: React.FC<MarkdownProps> = ({ content }) => {
         );
       }
 
-      // Handle code blocks
+      // 处理普通代码块
       if (!inline && match) {
         return (
           <div className="my-6 rounded-md overflow-hidden text-sm shadow-sm">
@@ -180,7 +198,7 @@ const Markdown: React.FC<MarkdownProps> = ({ content }) => {
         );
       }
 
-      // Handle inline code
+      // 处理内联代码
       return (
         <code
           className={`${className} font-mono bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded text-pink-500 dark:text-pink-400 text-sm`}
@@ -192,17 +210,24 @@ const Markdown: React.FC<MarkdownProps> = ({ content }) => {
     },
   };
 
+  // 返回渲染的 Markdown 内容
   return (
     <div className="prose prose-base dark:prose-invert max-w-none px-2 py-4">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeRaw]}
-        components={MarkdownComponents}
+        remarkPlugins={[remarkGfm]} // 启用 GFM 插件
+        rehypePlugins={[rehypeRaw]} // 启用 raw HTML 插件
+        components={MarkdownComponents} // 自定义组件映射
       >
-        {content}
+        {content} {/* 渲染传入的 Markdown 内容 */}
       </ReactMarkdown>
     </div>
   );
 };
 
+// 导出组件
 export default Markdown;
+
+// 总结：
+// 该组件是一个高度可定制的 Markdown 渲染器，支持多种 Markdown 元素的样式化处理，
+// 包括段落、标题、列表、链接、引用、表格以及代码块。特别地，它支持 Mermaid 图表的渲染，
+// 并为代码块提供了复制到剪贴板的功能。整体设计注重用户体验和视觉美观性。

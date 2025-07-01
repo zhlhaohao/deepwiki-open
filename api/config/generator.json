@@ -23,25 +23,10 @@
       }
     },
     "openai": {
-      "default_model": "gpt-4o",
+      "default_model": "Qwen3-14B",
       "supportsCustomModel": true,
       "models": {
-        "gpt-4o": {
-          "temperature": 0.7,
-          "top_p": 0.8
-        },
-        "gpt-4.1": {
-          "temperature": 0.7,
-          "top_p": 0.8
-        },
-        "o1": {
-          "temperature": 0.7,
-          "top_p": 0.8
-        },
-        "o3": {
-          "temperature": 1.0
-        },
-        "o4-mini": {
+        "Qwen3-14B": {
           "temperature": 0.7,
           "top_p": 0.8
         }

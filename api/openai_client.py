@@ -178,7 +178,9 @@ class OpenAIClient(ModelClient):
         self._api_key = api_key
         self._env_api_key_name = env_api_key_name
         self._env_base_url_name = env_base_url_name
-        self.base_url = base_url or os.getenv(self._env_base_url_name, "https://api.openai.com/v1")
+        self.base_url = base_url or os.getenv(
+            self._env_base_url_name, "https://api.openai.com/v1"
+        )
         self.sync_client = self.init_sync_client()
         self.async_client = None  # only initialize if the async call is called
         self.chat_completion_parser = (
@@ -240,7 +242,6 @@ class OpenAIClient(ModelClient):
         self,
         completion: Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]],
     ) -> CompletionUsage:
-
         try:
             usage: CompletionUsage = CompletionUsage(
                 completion_tokens=completion.usage.completion_tokens,
@@ -428,7 +429,9 @@ class OpenAIClient(ModelClient):
                 streaming_kwargs["stream"] = True
 
                 # Get streaming response
-                stream_response = self.sync_client.chat.completions.create(**streaming_kwargs)
+                stream_response = self.sync_client.chat.completions.create(
+                    **streaming_kwargs
+                )
 
                 # Accumulate all content from the stream
                 accumulated_content = ""
@@ -448,15 +451,19 @@ class OpenAIClient(ModelClient):
                                 accumulated_content += text or ""
                 # Return the mock completion object that will be processed by the chat_completion_parser
                 return ChatCompletion(
-                    id = id,
+                    id=id,
                     model=model,
                     created=created,
                     object="chat.completion",
-                    choices=[Choice(
-                        index=0,
-                        finish_reason="stop",
-                        message=ChatCompletionMessage(content=accumulated_content, role="assistant")
-                    )]
+                    choices=[
+                        Choice(
+                            index=0,
+                            finish_reason="stop",
+                            message=ChatCompletionMessage(
+                                content=accumulated_content, role="assistant"
+                            ),
+                        )
+                    ],
                 )
         elif model_type == ModelType.IMAGE_GENERATION:
             # Determine which image API to call based on the presence of image/mask
@@ -599,7 +606,7 @@ if __name__ == "__main__":
 
     gen = Generator(
         model_client=OpenAIClient(),
-        model_kwargs={"model": "gpt-4o", "stream": False},
+        model_kwargs={"model": "Qwen3-14B", "stream": False},
     )
     gen_response = gen(prompt_kwargs)
     print(f"gen_response: {gen_response}")
@@ -623,7 +630,7 @@ if __name__ == "__main__":
     setup_env()
 
     openai_llm = adal.Generator(
-        model_client=OpenAIClient(), model_kwargs={"model": "gpt-4o"}
+        model_client=OpenAIClient(), model_kwargs={"model": "Qwen3-14B"}
     )
     resopnse = openai_llm(prompt_kwargs={"input_str": "What is LLM?"})
     print(resopnse)
