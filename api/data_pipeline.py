@@ -55,7 +55,7 @@ def count_tokens(text: str, is_ollama_embedder: bool = None) -> int:
         # Rough approximation: 4 characters per token
         return len(text) // 4
 
-def download_repo(repo_url: str, local_path: str, type: str = "github", access_token: str = None) -> str:
+def download_repo(repo_url: str, local_path: str, type: str = "github", access_token: str = None, proxy: str = "http://10.119.80.110:17890") -> str:
     """
     Downloads a Git repository (GitHub, GitLab, or Bitbucket) to a specified local path.
 
@@ -63,11 +63,29 @@ def download_repo(repo_url: str, local_path: str, type: str = "github", access_t
         repo_url (str): The URL of the Git repository to clone.
         local_path (str): The local directory where the repository will be cloned.
         access_token (str, optional): Access token for private repositories.
+        proxy (str, optional): HTTP/HTTPS proxy address (e.g. http://127.0.0.1:7890)
 
     Returns:
         str: The output message from the `git` command.
     """
     try:
+        # Configure proxy environment
+        env = os.environ.copy()
+        if proxy:
+            parsed_proxy = urlparse(proxy)
+            if not parsed_proxy.scheme or not parsed_proxy.netloc:
+                raise ValueError(f"Invalid proxy format: {proxy}")
+            
+            # Encode credentials if present
+            if parsed_proxy.username or parsed_proxy.password:
+                auth = f"{parsed_proxy.username}:{parsed_proxy.password}"
+                encoded_auth = base64.b64encode(auth.encode()).decode()
+                proxy = f"{parsed_proxy.scheme}://{encoded_auth}@{parsed_proxy.hostname}:{parsed_proxy.port}"
+            
+            env["HTTP_PROXY"] = proxy
+            env["HTTPS_PROXY"] = proxy
+            logger.info(f"Using proxy for Git operations: {parsed_proxy.scheme}://***:***@{parsed_proxy.hostname}:{parsed_proxy.port}")
+
         # Check if Git is installed
         logger.info(f"Preparing to clone repository to {local_path}")
         subprocess.run(
@@ -75,6 +93,7 @@ def download_repo(repo_url: str, local_path: str, type: str = "github", access_t
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env=env
         )
 
         # Check if repository already exists
@@ -106,12 +125,13 @@ def download_repo(repo_url: str, local_path: str, type: str = "github", access_t
         # Clone the repository
         logger.info(f"Cloning repository from {repo_url} to {local_path}")
         # We use repo_url in the log to avoid exposing the token in logs
-        result = subprocess.run(
-            ["git", "clone", clone_url, local_path],
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
+            result = subprocess.run(
+                ["git", "clone", clone_url, local_path],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env
+            )
 
         logger.info("Repository cloned successfully")
         return result.stdout.decode("utf-8")

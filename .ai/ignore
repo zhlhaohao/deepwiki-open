@@ -68,4 +68,7 @@ next-env.d.ts
 # ignore adding self-signed certs
 certs/
 
-.ai/backup
+.git/
+.venv/
+/.vscode
+.ai/
