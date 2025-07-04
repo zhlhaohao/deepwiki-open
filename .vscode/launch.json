@@ -2,18 +2,17 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Deepwiki-Open",
-            "type": "python",
-            "request": "launch",
-            "module": "uvicorn",
-            "args": [
-                "api.api:app",
-                "--reload",
-                "--port",
-                "8008"
-            ],
-            "jinja": true,
-            "justMyCode": true
+        "name": "1-main",
+        "type": "debugpy",
+        "request": "launch",
+        "program": "${workspaceFolder}/api/main.py",
+        "args": [],
+        "env": {
+            "SMTP_PROXY": "http://10.119.80.110:17890"
+        },
+        "console": "integratedTerminal",
+        "cwd": "${workspaceFolder}",
+        "justMyCode": false
         },
         {
         "name": "2-current file",

@@ -14,15 +14,18 @@ from api.tools.embedder import get_embedder
 class UserQuery:
     query_str: str
 
+
 @dataclass
 class AssistantResponse:
     response_str: str
+
 
 @dataclass
 class DialogTurn:
     id: str
     user_query: UserQuery
     assistant_response: AssistantResponse
+
 
 class CustomConversation:
     """Custom implementation of Conversation to fix the list assignment index out of range error"""
@@ -32,9 +35,10 @@ class CustomConversation:
 
     def append_dialog_turn(self, dialog_turn):
         """Safely append a dialog turn to the conversation"""
-        if not hasattr(self, 'dialog_turns'):
+        if not hasattr(self, "dialog_turns"):
             self.dialog_turns = []
         self.dialog_turns.append(dialog_turn)
+
 
 # Import other adalflow components
 from adalflow.components.retriever.faiss_retriever import FAISSRetriever
@@ -46,6 +50,7 @@ logger = logging.getLogger(__name__)
 
 # Maximum token limit for embedding models
 MAX_INPUT_TOKENS = 7500  # Safe threshold below 8192 token limit
+
 
 class Memory(adal.core.component.DataComponent):
     """Simple conversation management with a list of dialog turns."""
@@ -60,15 +65,21 @@ class Memory(adal.core.component.DataComponent):
         all_dialog_turns = {}
         try:
             # Check if dialog_turns exists and is a list
-            if hasattr(self.current_conversation, 'dialog_turns'):
+            if hasattr(self.current_conversation, "dialog_turns"):
                 if self.current_conversation.dialog_turns:
-                    logger.info(f"Memory content: {len(self.current_conversation.dialog_turns)} turns")
+                    logger.info(
+                        f"Memory content: {len(self.current_conversation.dialog_turns)} turns"
+                    )
                     for i, turn in enumerate(self.current_conversation.dialog_turns):
-                        if hasattr(turn, 'id') and turn.id is not None:
+                        if hasattr(turn, "id") and turn.id is not None:
                             all_dialog_turns[turn.id] = turn
-                            logger.info(f"Added turn {i+1} with ID {turn.id} to memory")
+                            logger.info(
+                                f"Added turn {i + 1} with ID {turn.id} to memory"
+                            )
                         else:
-                            logger.warning(f"Skipping invalid turn object in memory: {turn}")
+                            logger.warning(
+                                f"Skipping invalid turn object in memory: {turn}"
+                            )
                 else:
                     logger.info("Dialog turns list exists but is empty")
             else:
@@ -107,19 +118,23 @@ class Memory(adal.core.component.DataComponent):
             )
 
             # Make sure the current_conversation has the append_dialog_turn method
-            if not hasattr(self.current_conversation, 'append_dialog_turn'):
-                logger.warning("current_conversation does not have append_dialog_turn method, creating new one")
+            if not hasattr(self.current_conversation, "append_dialog_turn"):
+                logger.warning(
+                    "current_conversation does not have append_dialog_turn method, creating new one"
+                )
                 # Initialize a new conversation if needed
                 self.current_conversation = CustomConversation()
 
             # Ensure dialog_turns exists
-            if not hasattr(self.current_conversation, 'dialog_turns'):
+            if not hasattr(self.current_conversation, "dialog_turns"):
                 logger.warning("dialog_turns not found, initializing empty list")
                 self.current_conversation.dialog_turns = []
 
             # Safely append the dialog turn
             self.current_conversation.dialog_turns.append(dialog_turn)
-            logger.info(f"Successfully added dialog turn, now have {len(self.current_conversation.dialog_turns)} turns")
+            logger.info(
+                f"Successfully added dialog turn, now have {len(self.current_conversation.dialog_turns)} turns"
+            )
             return True
 
         except Exception as e:
@@ -130,7 +145,9 @@ class Memory(adal.core.component.DataComponent):
                 dialog_turn = DialogTurn(
                     id=str(uuid4()),
                     user_query=UserQuery(query_str=user_query),
-                    assistant_response=AssistantResponse(response_str=assistant_response),
+                    assistant_response=AssistantResponse(
+                        response_str=assistant_response
+                    ),
                 )
                 self.current_conversation.dialog_turns.append(dialog_turn)
                 logger.info("Recovered from error by creating new conversation")
@@ -138,6 +155,7 @@ class Memory(adal.core.component.DataComponent):
             except Exception as e2:
                 logger.error(f"Failed to recover from error: {str(e2)}")
                 return False
+
 
 system_prompt = r"""
 You are a code assistant which answers user questions on a Github Repo.
@@ -196,12 +214,21 @@ Content: {{context.text}}
 
 from dataclasses import dataclass, field
 
+
 @dataclass
 class RAGAnswer(adal.DataClass):
-    rationale: str = field(default="", metadata={"desc": "Chain of thoughts for the answer."})
-    answer: str = field(default="", metadata={"desc": "Answer to the user query, formatted in markdown for beautiful rendering with react-markdown. DO NOT include ``` triple backticks fences at the beginning or end of your answer."})
+    rationale: str = field(
+        default="", metadata={"desc": "Chain of thoughts for the answer."}
+    )
+    answer: str = field(
+        default="",
+        metadata={
+            "desc": "Answer to the user query, formatted in markdown for beautiful rendering with react-markdown. DO NOT include ``` triple backticks fences at the beginning or end of your answer."
+        },
+    )
 
     __output_fields__ = ["rationale", "answer"]
+
 
 class RAG(adal.Component):
     """RAG with one repo.
@@ -231,12 +258,14 @@ class RAG(adal.Component):
         if self.is_ollama_embedder:
             from api.ollama_patch import check_ollama_model_exists
             from api.config import get_embedder_config
-            
+
             embedder_config = get_embedder_config()
             if embedder_config and embedder_config.get("model_kwargs", {}).get("model"):
                 model_name = embedder_config["model_kwargs"]["model"]
                 if not check_ollama_model_exists(model_name):
-                    raise Exception(f"Ollama model '{model_name}' not found. Please run 'ollama pull {model_name}' to install it.")
+                    raise Exception(
+                        f"Ollama model '{model_name}' not found. Please run 'ollama pull {model_name}' to install it."
+                    )
 
         # Initialize components
         self.memory = Memory()
@@ -252,7 +281,9 @@ class RAG(adal.Component):
             return self.embedder(input=query)
 
         # Use single string embedder for Ollama, regular embedder for others
-        self.query_embedder = single_string_embedder if self.is_ollama_embedder else self.embedder
+        self.query_embedder = (
+            single_string_embedder if self.is_ollama_embedder else self.embedder
+        )
 
         self.initialize_db_manager()
 
@@ -260,7 +291,9 @@ class RAG(adal.Component):
         data_parser = adal.DataClassParser(data_class=RAGAnswer, return_data_class=True)
 
         # Format instructions to ensure proper output structure
-        format_instructions = data_parser.get_output_format_str() + """
+        format_instructions = (
+            data_parser.get_output_format_str()
+            + """
 
 IMPORTANT FORMATTING RULES:
 1. DO NOT include your thinking or reasoning process in the output
@@ -272,9 +305,11 @@ IMPORTANT FORMATTING RULES:
 7. Do not use backslashes before special characters like [ ] { } in your answer
 8. When listing tags or similar items, write them as plain text without escape characters
 9. For pipe characters (|) in text, write them directly without escaping them"""
+        )
 
         # Get model configuration based on provider and model
         from api.config import get_model_config
+
         generator_config = get_model_config(self.provider, self.model)
 
         # Set up the main generator
@@ -291,7 +326,6 @@ IMPORTANT FORMATTING RULES:
             output_processors=data_parser,
         )
 
-
     def initialize_db_manager(self):
         """Initialize the database manager with local storage"""
         self.db_manager = DatabaseManager()
@@ -299,7 +333,14 @@ IMPORTANT FORMATTING RULES:
 
     def _validate_and_filter_embeddings(self, documents: List) -> List:
         """
-        Validate embeddings and filter out documents with invalid or mismatched embedding sizes.
+        向量尺寸验证：确保所有文档的 embedding 向量具有相同维度
+        数据清洗：过滤无效/损坏的 embedding 向量
+        异常处理：捕获并记录向量验证过程中的各种异常
+        防止 FAISS “All embeddings should be of the same size” 错误
+        处理不同模型生成的不一致向量
+        过滤损坏的 embedding 数据
+        提供详细的调试日志（包含文件路径和具体错误）
+        该函数是保证 RAG 系统稳定运行的关键组件，防止因向量尺寸不一致导致的检索失败问题。
 
         Args:
             documents: List of documents with embeddings
@@ -316,29 +357,39 @@ IMPORTANT FORMATTING RULES:
 
         # First pass: collect all embedding sizes and count occurrences
         for i, doc in enumerate(documents):
-            if not hasattr(doc, 'vector') or doc.vector is None:
+            if not hasattr(doc, "vector") or doc.vector is None:
                 logger.warning(f"Document {i} has no embedding vector, skipping")
                 continue
 
             try:
                 if isinstance(doc.vector, list):
                     embedding_size = len(doc.vector)
-                elif hasattr(doc.vector, 'shape'):
-                    embedding_size = doc.vector.shape[0] if len(doc.vector.shape) == 1 else doc.vector.shape[-1]
-                elif hasattr(doc.vector, '__len__'):
+                elif hasattr(doc.vector, "shape"):
+                    embedding_size = (
+                        doc.vector.shape[0]
+                        if len(doc.vector.shape) == 1
+                        else doc.vector.shape[-1]
+                    )
+                elif hasattr(doc.vector, "__len__"):
                     embedding_size = len(doc.vector)
                 else:
-                    logger.warning(f"Document {i} has invalid embedding vector type: {type(doc.vector)}, skipping")
+                    logger.warning(
+                        f"Document {i} has invalid embedding vector type: {type(doc.vector)}, skipping"
+                    )
                     continue
 
                 if embedding_size == 0:
                     logger.warning(f"Document {i} has empty embedding vector, skipping")
                     continue
 
-                embedding_sizes[embedding_size] = embedding_sizes.get(embedding_size, 0) + 1
+                embedding_sizes[embedding_size] = (
+                    embedding_sizes.get(embedding_size, 0) + 1
+                )
 
             except Exception as e:
-                logger.warning(f"Error checking embedding size for document {i}: {str(e)}, skipping")
+                logger.warning(
+                    f"Error checking embedding size for document {i}: {str(e)}, skipping"
+                )
                 continue
 
         if not embedding_sizes:
@@ -347,24 +398,32 @@ IMPORTANT FORMATTING RULES:
 
         # Find the most common embedding size (this should be the correct one)
         target_size = max(embedding_sizes.keys(), key=lambda k: embedding_sizes[k])
-        logger.info(f"Target embedding size: {target_size} (found in {embedding_sizes[target_size]} documents)")
+        logger.info(
+            f"Target embedding size: {target_size} (found in {embedding_sizes[target_size]} documents)"
+        )
 
         # Log all embedding sizes found
         for size, count in embedding_sizes.items():
             if size != target_size:
-                logger.warning(f"Found {count} documents with incorrect embedding size {size}, will be filtered out")
+                logger.warning(
+                    f"Found {count} documents with incorrect embedding size {size}, will be filtered out"
+                )
 
         # Second pass: filter documents with the target embedding size
         for i, doc in enumerate(documents):
-            if not hasattr(doc, 'vector') or doc.vector is None:
+            if not hasattr(doc, "vector") or doc.vector is None:
                 continue
 
             try:
                 if isinstance(doc.vector, list):
                     embedding_size = len(doc.vector)
-                elif hasattr(doc.vector, 'shape'):
-                    embedding_size = doc.vector.shape[0] if len(doc.vector.shape) == 1 else doc.vector.shape[-1]
-                elif hasattr(doc.vector, '__len__'):
+                elif hasattr(doc.vector, "shape"):
+                    embedding_size = (
+                        doc.vector.shape[0]
+                        if len(doc.vector.shape) == 1
+                        else doc.vector.shape[-1]
+                    )
+                elif hasattr(doc.vector, "__len__"):
                     embedding_size = len(doc.vector)
                 else:
                     continue
@@ -373,40 +432,62 @@ IMPORTANT FORMATTING RULES:
                     valid_documents.append(doc)
                 else:
                     # Log which document is being filtered out
-                    file_path = getattr(doc, 'meta_data', {}).get('file_path', f'document_{i}')
-                    logger.warning(f"Filtering out document '{file_path}' due to embedding size mismatch: {embedding_size} != {target_size}")
+                    file_path = getattr(doc, "meta_data", {}).get(
+                        "file_path", f"document_{i}"
+                    )
+                    logger.warning(
+                        f"Filtering out document '{file_path}' due to embedding size mismatch: {embedding_size} != {target_size}"
+                    )
 
             except Exception as e:
-                file_path = getattr(doc, 'meta_data', {}).get('file_path', f'document_{i}')
-                logger.warning(f"Error validating embedding for document '{file_path}': {str(e)}, skipping")
+                file_path = getattr(doc, "meta_data", {}).get(
+                    "file_path", f"document_{i}"
+                )
+                logger.warning(
+                    f"Error validating embedding for document '{file_path}': {str(e)}, skipping"
+                )
                 continue
 
-        logger.info(f"Embedding validation complete: {len(valid_documents)}/{len(documents)} documents have valid embeddings")
+        logger.info(
+            f"Embedding validation complete: {len(valid_documents)}/{len(documents)} documents have valid embeddings"
+        )
 
         if len(valid_documents) == 0:
             logger.error("No documents with valid embeddings remain after filtering")
         elif len(valid_documents) < len(documents):
             filtered_count = len(documents) - len(valid_documents)
-            logger.warning(f"Filtered out {filtered_count} documents due to embedding issues")
+            logger.warning(
+                f"Filtered out {filtered_count} documents due to embedding issues"
+            )
 
         return valid_documents
 
-    def prepare_retriever(self, repo_url_or_path: str, type: str = "github", access_token: str = None,
-                      excluded_dirs: List[str] = None, excluded_files: List[str] = None,
-                      included_dirs: List[str] = None, included_files: List[str] = None):
+    def prepare_retriever(
+        self,
+        repo_url_or_path: str,
+        type: str = "github",
+        access_token: str = None,
+        excluded_dirs: List[str] = None,
+        excluded_files: List[str] = None,
+        included_dirs: List[str] = None,
+        included_files: List[str] = None,
+    ):
         """
-        Prepare the retriever for a repository.
-        Will load database from local storage if available.
+        为git仓库准备检索器.
+        在本地路径加载数据库Will load database from local storage if available.
 
         Args:
-            repo_url_or_path: URL or local path to the repository
-            access_token: Optional access token for private repositories
+            repo_url_or_path: git仓库的URL or 或者本地路径
+            access_token: 访问仓库的access_token Optional access token for private repositories
             excluded_dirs: Optional list of directories to exclude from processing
             excluded_files: Optional list of file patterns to exclude from processing
             included_dirs: Optional list of directories to include exclusively
             included_files: Optional list of file patterns to include exclusively
         """
+
+        # 创建内存数据库
         self.initialize_db_manager()
+
         self.repo_url_or_path = repo_url_or_path
         self.transformed_docs = self.db_manager.prepare_database(
             repo_url_or_path,
@@ -416,21 +497,29 @@ IMPORTANT FORMATTING RULES:
             excluded_dirs=excluded_dirs,
             excluded_files=excluded_files,
             included_dirs=included_dirs,
-            included_files=included_files
+            included_files=included_files,
         )
         logger.info(f"Loaded {len(self.transformed_docs)} documents for retrieval")
 
         # Validate and filter embeddings to ensure consistent sizes
-        self.transformed_docs = self._validate_and_filter_embeddings(self.transformed_docs)
+        self.transformed_docs = self._validate_and_filter_embeddings(
+            self.transformed_docs
+        )
 
         if not self.transformed_docs:
-            raise ValueError("No valid documents with embeddings found. Cannot create retriever.")
+            raise ValueError(
+                "No valid documents with embeddings found. Cannot create retriever."
+            )
 
-        logger.info(f"Using {len(self.transformed_docs)} documents with valid embeddings for retrieval")
+        logger.info(
+            f"Using {len(self.transformed_docs)} documents with valid embeddings for retrieval"
+        )
 
         try:
             # Use the appropriate embedder for retrieval
-            retrieve_embedder = self.query_embedder if self.is_ollama_embedder else self.embedder
+            retrieve_embedder = (
+                self.query_embedder if self.is_ollama_embedder else self.embedder
+            )
             self.retriever = FAISSRetriever(
                 **configs["retriever"],
                 embedder=retrieve_embedder,
@@ -442,17 +531,25 @@ IMPORTANT FORMATTING RULES:
             logger.error(f"Error creating FAISS retriever: {str(e)}")
             # Try to provide more specific error information
             if "All embeddings should be of the same size" in str(e):
-                logger.error("Embedding size validation failed. This suggests there are still inconsistent embedding sizes.")
+                logger.error(
+                    "Embedding size validation failed. This suggests there are still inconsistent embedding sizes."
+                )
                 # Log embedding sizes for debugging
                 sizes = []
-                for i, doc in enumerate(self.transformed_docs[:10]):  # Check first 10 docs
-                    if hasattr(doc, 'vector') and doc.vector is not None:
+                for i, doc in enumerate(
+                    self.transformed_docs[:10]
+                ):  # Check first 10 docs
+                    if hasattr(doc, "vector") and doc.vector is not None:
                         try:
                             if isinstance(doc.vector, list):
                                 size = len(doc.vector)
-                            elif hasattr(doc.vector, 'shape'):
-                                size = doc.vector.shape[0] if len(doc.vector.shape) == 1 else doc.vector.shape[-1]
-                            elif hasattr(doc.vector, '__len__'):
+                            elif hasattr(doc.vector, "shape"):
+                                size = (
+                                    doc.vector.shape[0]
+                                    if len(doc.vector.shape) == 1
+                                    else doc.vector.shape[-1]
+                                )
+                            elif hasattr(doc.vector, "__len__"):
                                 size = len(doc.vector)
                             else:
                                 size = "unknown"
@@ -489,6 +586,6 @@ IMPORTANT FORMATTING RULES:
             # Create error response
             error_response = RAGAnswer(
                 rationale="Error occurred while processing the query.",
-                answer=f"I apologize, but I encountered an error while processing your question. Please try again or rephrase your question."
+                answer=f"I apologize, but I encountered an error while processing your question. Please try again or rephrase your question.",
             )
             return error_response, []

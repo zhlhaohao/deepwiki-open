@@ -466,6 +466,7 @@ def read_all_documents(
 def prepare_data_pipeline(is_ollama_embedder: bool = None):
     """
     Creates and returns the data transformation pipeline.
+    创建文件转换管道。文件 --> 嵌入向量
 
     Args:
         is_ollama_embedder (bool, optional): Whether to use Ollama for embedding.
@@ -943,6 +944,7 @@ class DatabaseManager:
 
         # prepare the database
         logger.info("Creating new database...")
+        # 读取文件的内容
         documents = read_all_documents(
             self.repo_paths["save_repo_dir"],
             is_ollama_embedder=is_ollama_embedder,
@@ -951,6 +953,7 @@ class DatabaseManager:
             included_dirs=included_dirs,
             included_files=included_files,
         )
+        # 把文件进行转换
         self.db = transform_documents_and_save_to_db(
             documents,
             self.repo_paths["save_db_file"],
