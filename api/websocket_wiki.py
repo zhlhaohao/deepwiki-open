@@ -56,11 +56,11 @@ async def handle_websocket_chat(websocket: WebSocket):
     await websocket.accept()
 
     try:
-        # Receive and parse the request data
+        # 接收并解析 WebSocket 请求数据
         request_data = await websocket.receive_json()
         request = ChatCompletionRequest(**request_data)
 
-        # Check if request contains very large input
+        # 检查请求是否包含过大输入内容
         input_too_large = False
         if request.messages and len(request.messages) > 0:
             last_message = request.messages[-1]
@@ -71,45 +71,52 @@ async def handle_websocket_chat(websocket: WebSocket):
                     logger.warning(f"Request exceeds recommended token limit ({tokens} > 7500)")
                     input_too_large = True
 
-        # Create a new RAG instance for this request
+        # 创建一个新的 RAG 实例用于当前请求处理
         try:
             request_rag = RAG(provider=request.provider, model=request.model)
 
-            # Extract custom file filter parameters if provided
+            # 提取用户提供的文件过滤参数（如存在）
             excluded_dirs = None
             excluded_files = None
             included_dirs = None
             included_files = None
 
             if request.excluded_dirs:
+                # 解析并存储用户指定的排除目录列表
                 excluded_dirs = [unquote(dir_path) for dir_path in request.excluded_dirs.split('\n') if dir_path.strip()]
                 logger.info(f"Using custom excluded directories: {excluded_dirs}")
             if request.excluded_files:
+                # 解析并存储用户指定的排除文件模式列表
                 excluded_files = [unquote(file_pattern) for file_pattern in request.excluded_files.split('\n') if file_pattern.strip()]
                 logger.info(f"Using custom excluded files: {excluded_files}")
             if request.included_dirs:
+                # 解析并存储用户指定的包含目录列表
                 included_dirs = [unquote(dir_path) for dir_path in request.included_dirs.split('\n') if dir_path.strip()]
                 logger.info(f"Using custom included directories: {included_dirs}")
             if request.included_files:
+                # 解析并存储用户指定的包含文件模式列表
                 included_files = [unquote(file_pattern) for file_pattern in request.included_files.split('\n') if file_pattern.strip()]
                 logger.info(f"Using custom included files: {included_files}")
 
+            # 使用给定参数初始化检索器
             request_rag.prepare_retriever(request.repo_url, request.type, request.token, excluded_dirs, excluded_files, included_dirs, included_files)
             logger.info(f"Retriever prepared for {request.repo_url}")
         except ValueError as e:
             if "No valid documents with embeddings found" in str(e):
+                # 处理无法找到有效文档嵌入的情况
                 logger.error(f"No valid embeddings found: {str(e)}")
                 await websocket.send_text("Error: No valid document embeddings found. This may be due to embedding size inconsistencies or API errors during document processing. Please try again or check your repository content.")
                 await websocket.close()
                 return
             else:
+                # 处理其他 ValueError 错误
                 logger.error(f"ValueError preparing retriever: {str(e)}")
                 await websocket.send_text(f"Error preparing retriever: {str(e)}")
                 await websocket.close()
                 return
         except Exception as e:
+            # 处理准备检索器时发生的其他异常
             logger.error(f"Error preparing retriever: {str(e)}")
-            # Check for specific embedding-related errors
             if "All embeddings should be of the same size" in str(e):
                 await websocket.send_text("Error: Inconsistent embedding sizes detected. Some documents may have failed to embed properly. Please try again.")
             else:
@@ -117,90 +124,97 @@ async def handle_websocket_chat(websocket: WebSocket):
             await websocket.close()
             return
 
-        # Validate request
+        # 验证请求是否包含消息内容
         if not request.messages or len(request.messages) == 0:
             await websocket.send_text("Error: No messages provided")
             await websocket.close()
             return
 
+        # 确保最后一条消息来自用户
         last_message = request.messages[-1]
         if last_message.role != "user":
             await websocket.send_text("Error: Last message must be from the user")
             await websocket.close()
             return
 
-        # Process previous messages to build conversation history
+        # 处理之前的对话历史以构建记忆
         for i in range(0, len(request.messages) - 1, 2):
             if i + 1 < len(request.messages):
                 user_msg = request.messages[i]
                 assistant_msg = request.messages[i + 1]
 
                 if user_msg.role == "user" and assistant_msg.role == "assistant":
+                    # 将用户和助手的消息对添加到 RAG 的记忆中
                     request_rag.memory.add_dialog_turn(
                         user_query=user_msg.content,
                         assistant_response=assistant_msg.content
                     )
 
-        # Check if this is a Deep Research request
+        # 检查当前请求是否为深度研究模式
         is_deep_research = False
+        # 默认迭代次数为1
         research_iteration = 1
 
-        # Process messages to detect Deep Research requests
+        # 遍历所有消息以检测是否包含 [DEEP RESEARCH] 标记
         for msg in request.messages:
             if hasattr(msg, 'content') and msg.content and "[DEEP RESEARCH]" in msg.content:
-                is_deep_research = True
-                # Only remove the tag from the last message
+                # 如果发现标记，则启用深度研究模式
+                is_deep_research = True  
+                # 仅从最后一条消息中移除 [DEEP RESEARCH] 标签
                 if msg == request.messages[-1]:
-                    # Remove the Deep Research tag
+                    # 移除标签并清理内容前后空格
                     msg.content = msg.content.replace("[DEEP RESEARCH]", "").strip()
 
-        # Count research iterations if this is a Deep Research request
+        # 如果是深度研究请求，计算当前处于第几次迭代
         if is_deep_research:
+            # 计算已有的助手回复数量，并加1作为当前迭代次数
             research_iteration = sum(1 for msg in request.messages if msg.role == 'assistant') + 1
             logger.info(f"Deep Research request detected - iteration {research_iteration}")
 
-            # Check if this is a continuation request
+            # 检查是否为继续研究的请求
             if "continue" in last_message.content.lower() and "research" in last_message.content.lower():
-                # Find the original topic from the first user message
+                # 寻找原始主题（来自第一条非 continue 的用户消息）
                 original_topic = None
                 for msg in request.messages:
                     if msg.role == "user" and "continue" not in msg.content.lower():
+                        # 提取原始主题并去除 [DEEP RESEARCH] 标签和多余空格
                         original_topic = msg.content.replace("[DEEP RESEARCH]", "").strip()
                         logger.info(f"Found original research topic: {original_topic}")
-                        break
+                        # 找到后退出循环
+                        break  
 
                 if original_topic:
-                    # Replace the continuation message with the original topic
+                    # 将当前消息替换为原始主题
                     last_message.content = original_topic
                     logger.info(f"Using original topic for research: {original_topic}")
 
-        # Get the query from the last message
+        # 获取用户的最终查询内容
         query = last_message.content
 
-        # Only retrieve documents if input is not too large
+        # 仅在输入不过大的情况下才进行文档检索
         context_text = ""
         retrieved_documents = None
 
         if not input_too_large:
             try:
-                # If filePath exists, modify the query for RAG to focus on the file
+                # 如果提供了文件路径，修改 RAG 查询以聚焦该文件
                 rag_query = query
                 if request.filePath:
-                    # Use the file path to get relevant context about the file
+                    # 构建新的查询语句以获取特定文件的上下文
                     rag_query = f"Contexts related to {request.filePath}"
                     logger.info(f"Modified RAG query to focus on file: {request.filePath}")
 
-                # Try to perform RAG retrieval
+                # 尝试执行 RAG 检索
                 try:
-                    # This will use the actual RAG implementation
+                    # 调用 RAG 实例进行检索
                     retrieved_documents = request_rag(rag_query, language=request.language)
 
                     if retrieved_documents and retrieved_documents[0].documents:
-                        # Format context for the prompt in a more structured way
+                        # 获取检索到的文档列表
                         documents = retrieved_documents[0].documents
                         logger.info(f"Retrieved {len(documents)} documents")
 
-                        # Group documents by file path
+                        # 按文件路径对文档分组
                         docs_by_file = {}
                         for doc in documents:
                             file_path = doc.meta_data.get('file_path', 'unknown')
@@ -208,28 +222,27 @@ async def handle_websocket_chat(websocket: WebSocket):
                                 docs_by_file[file_path] = []
                             docs_by_file[file_path].append(doc)
 
-                        # Format context text with file path grouping
+                        # 按照文件路径格式化上下文文本
                         context_parts = []
                         for file_path, docs in docs_by_file.items():
-                            # Add file header with metadata
+                            # 添加带有元数据的文件头
                             header = f"## File Path: {file_path}\n\n"
-                            # Add document content
+                            # 添加文档内容
                             content = "\n\n".join([doc.text for doc in docs])
 
                             context_parts.append(f"{header}{content}")
 
-                        # Join all parts with clear separation
+                        # 将各部分拼接成完整上下文文本
                         context_text = "\n\n" + "-" * 10 + "\n\n".join(context_parts)
                     else:
                         logger.warning("No documents retrieved from RAG")
                 except Exception as e:
                     logger.error(f"Error in RAG retrieval: {str(e)}")
-                    # Continue without RAG if there's an error
+                    # 如果发生错误则继续不带 RAG 上下文的流程
 
             except Exception as e:
                 logger.error(f"Error retrieving documents: {str(e)}")
                 context_text = ""
-
         # Get repository information
         repo_url = request.repo_url
         repo_name = repo_url.split("/")[-1] if "/" in repo_url else repo_url
