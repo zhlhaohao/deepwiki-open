@@ -790,6 +790,7 @@ IMPORTANT:
         const serverBaseUrl = process.env.SERVER_BASE_URL || 'http://localhost:8001';
         const wsBaseUrl = serverBaseUrl.replace(/^http/, 'ws');
         const wsUrl = `${wsBaseUrl}/ws/chat`;
+        console.log('[ wsUrl ]-793', wsUrl)
 
         // Create a new WebSocket connection
         const ws = new WebSocket(wsUrl);
