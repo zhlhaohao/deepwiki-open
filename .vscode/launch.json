@@ -12,8 +12,10 @@
                 "--port",
                 "8001"
             ],
-            "jinja": true,
-            "justMyCode": true
+            "env": {
+                "SYSTEM_PROXY": "http://192.168.50.150:7890"
+            },
+            "justMyCode": false
         }
     ]
 }

@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1-labs
-
 # Build argument for custom certificates directory
 ARG CUSTOM_CERT_DIR="certs"
 
@@ -27,7 +25,12 @@ WORKDIR /app
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 COPY api/requirements.txt ./api/
-RUN pip install --no-cache -r api/requirements.txt
+RUN \
+    if [ "$NEED_MIRROR" == "1" ]; then \
+            pip config set global.index-url https://mirrors.aliyun.com/pypi/simple && \
+            pip config set global.trusted-host mirrors.aliyun.com; \
+        fi; \
+    pip install --no-cache -r api/requirements.txt
 
 # Use Python 3.11 as final image
 FROM python:3.11-slim
@@ -36,7 +39,11 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Install Node.js and npm
-RUN apt-get update && apt-get install -y \
+RUN \
+    if [ "$NEED_MIRROR" == "1" ]; then \
+        sed -i 's|http://archive.ubuntu.com|https://mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list; \
+    fi; \
+    apt-get update && apt-get install -y \
     curl \
     gnupg \
     git \

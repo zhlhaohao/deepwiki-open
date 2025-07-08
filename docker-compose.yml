@@ -2,20 +2,21 @@ version: '3.8'
 
 services:
   deepwiki:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: deepwiki:250708-4
+    container_name: deepwiki
     ports:
-      - "${PORT:-8001}:${PORT:-8001}"  # API port
+      - "${BACKEND_PORT:-8001}:${BACKEND_PORT:-8001}"  # API port
       - "3000:3000"  # Next.js port
     env_file:
       - .env
     environment:
-      - PORT=${PORT:-8001}
+      - PORT=${BACKEND_PORT:-8001}
       - NODE_ENV=production
-      - SERVER_BASE_URL=http://localhost:${PORT:-8001}
+      - SERVER_BASE_URL=http://localhost:${BACKEND_PORT:-8001}
+      - PYTHON_BACKEND_HOST=http://localhost:${BACKEND_PORT:-8001}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LOG_FILE_PATH=${LOG_FILE_PATH:-api/logs/application.log}
+      - SYSTEM_PROXY=http://192.168.50.150:7890
     volumes:
       - ~/.adalflow:/root/.adalflow      # Persist repository and embedding data
       - ./api/logs:/app/api/logs          # Persist log files across container restarts
@@ -24,7 +25,7 @@ services:
     mem_reservation: 2g
     # Health check configuration
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${PORT:-8001}/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:${BACKEND_PORT:-8001}/health"]
       interval: 60s
       timeout: 10s
       retries: 3

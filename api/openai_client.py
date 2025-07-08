@@ -15,9 +15,12 @@ from typing import (
     Literal,
 )
 import re
+import httpx
 
 import logging
 import backoff
+import ipaddress
+from urllib.parse import urlparse
 
 # optional import
 from adalflow.utils.lazy_import import safe_import, OptionalPackages
@@ -117,6 +120,38 @@ def get_probabilities(completion: ChatCompletion) -> List[List[TokenLogProb]]:
     return log_probs
 
 
+def is_ip_address(base_url):
+    try:
+        # 尝试将字符串解析为IP地址
+        if ipaddress.ip_address(base_url):
+            return True
+    except ValueError:
+        # 如果解析失败，则表示不是IP地址，可能是域名
+        return False
+
+
+def extract_ip_from_url(base_url):
+    # 解析URL
+    parsed_url = urlparse(base_url)
+
+    # 获取网络位置部分（即：'xxxx:9888'），不包括路径
+    netloc = parsed_url.netloc
+
+    # 如果包含端口号，则去掉端口号，只保留IP地址/域名部分
+    if ":" in netloc:
+        host = netloc.split(":")[0]
+    else:
+        host = netloc
+
+    # 验证是否为IP地址
+    try:
+        if ipaddress.ip_address(host):
+            return host
+    except ValueError:
+        # 不是IP地址，可能是域名
+        return None
+
+
 class OpenAIClient(ModelClient):
     __doc__ = r"""A component wrapper for the OpenAI API client.
 
@@ -178,7 +213,9 @@ class OpenAIClient(ModelClient):
         self._api_key = api_key
         self._env_api_key_name = env_api_key_name
         self._env_base_url_name = env_base_url_name
-        self.base_url = base_url or os.getenv(self._env_base_url_name, "https://api.openai.com/v1")
+        self.base_url = base_url or os.getenv(
+            self._env_base_url_name, "https://api.openai.com/v1"
+        )
         self.sync_client = self.init_sync_client()
         self.async_client = None  # only initialize if the async call is called
         self.chat_completion_parser = (
@@ -193,7 +230,22 @@ class OpenAIClient(ModelClient):
             raise ValueError(
                 f"Environment variable {self._env_api_key_name} must be set"
             )
-        return OpenAI(api_key=api_key, base_url=self.base_url)
+
+        # 获取环境变量 OPENAI_PROXY
+        if (
+            os.environ.get("SYSTEM_PROXY")
+            and "host.docker.internal" not in self.base_url
+            and "localhost" not in self.base_url
+            and not is_ip_address(extract_ip_from_url(self.base_url))
+        ):
+            transport = httpx.HTTPTransport(proxy=os.environ.get("SYSTEM_PROXY"))
+            return OpenAI(
+                http_client=httpx.Client(transport=transport),
+                api_key=api_key,
+                base_url=self.base_url,
+            )
+        else:
+            return OpenAI(api_key=api_key, base_url=self.base_url)
 
     def init_async_client(self):
         api_key = self._api_key or os.getenv(self._env_api_key_name)
@@ -201,7 +253,21 @@ class OpenAIClient(ModelClient):
             raise ValueError(
                 f"Environment variable {self._env_api_key_name} must be set"
             )
-        return AsyncOpenAI(api_key=api_key, base_url=self.base_url)
+        # 获取环境变量 OPENAI_PROXY
+        if (
+            os.environ.get("SYSTEM_PROXY")
+            and "host.docker.internal" not in self.base_url
+            and "localhost" not in self.base_url
+            and not is_ip_address(extract_ip_from_url(self.base_url))
+        ):
+            transport = httpx.AsyncHTTPTransport(proxy=os.environ.get("SYSTEM_PROXY"))
+            return AsyncOpenAI(
+                http_client=httpx.AsyncClient(transport=transport),
+                api_key=api_key,
+                base_url=self.base_url,
+            )
+        else:
+            return AsyncOpenAI(api_key=api_key, base_url=self.base_url)
 
     # def _parse_chat_completion(self, completion: ChatCompletion) -> "GeneratorOutput":
     #     # TODO: raw output it is better to save the whole completion as a source of truth instead of just the message
@@ -240,7 +306,6 @@ class OpenAIClient(ModelClient):
         self,
         completion: Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]],
     ) -> CompletionUsage:
-
         try:
             usage: CompletionUsage = CompletionUsage(
                 completion_tokens=completion.usage.completion_tokens,
@@ -428,7 +493,9 @@ class OpenAIClient(ModelClient):
                 streaming_kwargs["stream"] = True
 
                 # Get streaming response
-                stream_response = self.sync_client.chat.completions.create(**streaming_kwargs)
+                stream_response = self.sync_client.chat.completions.create(
+                    **streaming_kwargs
+                )
 
                 # Accumulate all content from the stream
                 accumulated_content = ""
@@ -448,15 +515,19 @@ class OpenAIClient(ModelClient):
                                 accumulated_content += text or ""
                 # Return the mock completion object that will be processed by the chat_completion_parser
                 return ChatCompletion(
-                    id = id,
+                    id=id,
                     model=model,
                     created=created,
                     object="chat.completion",
-                    choices=[Choice(
-                        index=0,
-                        finish_reason="stop",
-                        message=ChatCompletionMessage(content=accumulated_content, role="assistant")
-                    )]
+                    choices=[
+                        Choice(
+                            index=0,
+                            finish_reason="stop",
+                            message=ChatCompletionMessage(
+                                content=accumulated_content, role="assistant"
+                            ),
+                        )
+                    ],
                 )
         elif model_type == ModelType.IMAGE_GENERATION:
             # Determine which image API to call based on the presence of image/mask

@@ -63,7 +63,6 @@ def download_repo(
     local_path: str,
     type: str = "github",
     access_token: str = None,
-    proxy: str = "http://10.119.80.110:17890",
 ) -> str:
     """
     Downloads a Git repository (GitHub, GitLab, or Bitbucket) to a specified local path.
@@ -79,8 +78,9 @@ def download_repo(
     """
     try:
         # Configure proxy environment
-        env = os.environ.copy()
-        if proxy:
+        env = {}
+        if os.environ.get("SYSTEM_PROXY", None):
+            proxy = os.environ.get("SYSTEM_PROXY")
             parsed_proxy = urlparse(proxy)
             if not parsed_proxy.scheme or not parsed_proxy.netloc:
                 raise ValueError(f"Invalid proxy format: {proxy}")
