@@ -466,7 +466,7 @@ async def get_cached_wiki(
     language: str = Query(..., description="Language of the wiki content")
 ):
     """
-    Retrieves cached wiki data (structure and generated pages) for a repository.
+    返回缓存在本地硬盘的 wiki数据，Retrieves cached wiki data (structure and generated pages) for a repository.
     """
     # Language validation
     supported_langs = configs["lang_config"]["supported_languages"]
@@ -486,7 +486,7 @@ async def get_cached_wiki(
 @app.post("/api/wiki_cache")
 async def store_wiki_cache(request_data: WikiCacheRequest):
     """
-    Stores generated wiki data (structure and pages) to the server-side cache.
+    保存wiki数据到本地硬盘，Stores generated wiki data (structure and pages) to the server-side cache.
     """
     # Language validation
     supported_langs = configs["lang_config"]["supported_languages"]

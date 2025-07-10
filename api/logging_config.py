@@ -1,6 +1,7 @@
 import logging
 import os
 from pathlib import Path
+from logging.handlers import RotatingFileHandler
 
 class IgnoreLogChangeDetectedFilter(logging.Filter):
     def filter(self, record: logging.LogRecord):
@@ -24,7 +25,7 @@ def setup_logging(format: str = None):
     log_file_path = Path(os.environ.get(
         "LOG_FILE_PATH", str(default_log_file)))
 
-    # ensure log_file_path is within the project's logs directory to prevent path traversal
+    # Ensure log_file_path is within the project's logs directory to prevent path traversal
     log_dir_resolved = log_dir.resolve()
     resolved_path = log_file_path.resolve()
     if not str(resolved_path).startswith(str(log_dir_resolved) + os.sep):
@@ -35,11 +36,17 @@ def setup_logging(format: str = None):
     resolved_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Configure logging handlers and format
+    file_handler = RotatingFileHandler(
+        resolved_path,
+        maxBytes=10 * 1024 * 1024,  # 10 MB
+        backupCount=5  # Optional: Keep up to 5 backup log files
+    )
+
     logging.basicConfig(
         level=log_level,
-        format = format or "%(asctime)s - %(levelname)s - %(name)s - %(filename)s:%(lineno)d - %(message)s",
+        format=format or "%(asctime)s - %(levelname)s - %(name)s - %(filename)s:%(lineno)d - %(message)s",
         handlers=[
-            logging.FileHandler(resolved_path),
+            file_handler,
             logging.StreamHandler()
         ],
         force=True

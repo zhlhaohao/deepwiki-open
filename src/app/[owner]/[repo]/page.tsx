@@ -2,6 +2,7 @@
 'use client';
 
 import React, { useCallback, useState, useMemo, useEffect, useRef } from 'react';
+// 获取路由和查询参数，并构建 RepoInfo 对象
 import { useParams, useSearchParams } from 'next/navigation';
 import { FaExclamationTriangle, FaBookOpen, FaGithub, FaGitlab, FaBitbucket, FaDownload, FaFileExport, FaHome, FaFolder, FaSync, FaChevronUp, FaChevronDown, FaComments, FaTimes } from 'react-icons/fa';
 import Link from 'next/link';
@@ -164,7 +165,7 @@ const createBitbucketHeaders = (bitbucketToken: string): HeadersInit => {
   return headers;
 };
 
-
+// 这是一个react组件，虽然是用函数形式表达的
 export default function RepoWikiPage() {
   // Get route parameters and search params
   const params = useParams();
@@ -188,7 +189,8 @@ export default function RepoWikiPage() {
   // Import language context for translations
   const { messages } = useLanguage();
 
-  // Initialize repo info
+  // Initialize repo info  
+  // 使用 useMemo 创建一个 RepoInfo 对象，确保其只在依赖项变化时重新计算
   const repoInfo = useMemo<RepoInfo>(() => ({
     owner,
     repo,
@@ -234,6 +236,7 @@ export default function RepoWikiPage() {
   // This map tracks which pages are currently being processed to prevent duplicate requests
   // Note: In a multi-threaded environment, additional synchronization would be needed,
   // but in React's single-threaded model, this is safe as long as we set the flag before any async operations
+  // 控制并发请求，避免资源竞争
   const activeContentRequests = useRef(new Map<string, boolean>()).current;
   const [structureRequestInProgress, setStructureRequestInProgress] = useState(false);
   // Create a flag to track if data was loaded from cache to prevent immediate re-save
@@ -254,7 +257,7 @@ export default function RepoWikiPage() {
   // Default branch state
   const [defaultBranch, setDefaultBranch] = useState<string>('main');
 
-  // Helper function to generate proper repository file URLs
+  // 将文件名转换为repository file URLs
   const generateFileUrl = useCallback((filePath: string): string => {
     if (effectiveRepoInfo.type === 'local') {
       // For local repositories, we can't generate web URLs
@@ -318,6 +321,7 @@ export default function RepoWikiPage() {
   }, [isAskModalOpen]);
 
   // Fetch authentication status on component mount
+  // 使用 /api/auth/status 接口检查当前是否需要认证码。如果认证是必需的，则用户必须提供有效的认证码才能继续操作。
   useEffect(() => {
     const fetchAuthStatus = async () => {
       try {
@@ -340,54 +344,52 @@ export default function RepoWikiPage() {
     fetchAuthStatus();
   }, []);
 
-  // Generate content for a wiki page
+  // 负责根据用户选择的维基页面 (WikiPage) 生成 Markdown 格式的页面内容
   const generatePageContent = useCallback(async (page: WikiPage, owner: string, repo: string) => {
     return new Promise<void>(async (resolve) => {
       try {
-        // Skip if content already exists
+        // 如果该页面的内容已经存在，则直接 resolve，避免重复生成
         if (generatedPages[page.id]?.content) {
           resolve();
           return;
         }
 
-        // Skip if this page is already being processed
-        // Use a synchronized pattern to avoid race conditions
+        // 如果当前页面已经在处理中，则跳过本次调用，防止并发请求导致资源竞争
         if (activeContentRequests.get(page.id)) {
           console.log(`Page ${page.id} (${page.title}) is already being processed, skipping duplicate call`);
           resolve();
           return;
         }
 
-        // Mark this page as being processed immediately to prevent race conditions
-        // This ensures that if multiple calls happen nearly simultaneously, only one proceeds
+        // 立即将该页面标记为正在处理，以确保即使多个请求几乎同时到达，也只处理一个
         activeContentRequests.set(page.id, true);
 
-        // Validate repo info
+        // 验证仓库信息是否有效
         if (!owner || !repo) {
           throw new Error('Invalid repository information. Owner and repo name are required.');
         }
 
-        // Mark page as in progress
+        // 标记该页面为“进行中”
         setPagesInProgress(prev => new Set(prev).add(page.id));
-        // Don't set loading message for individual pages during queue processing
 
+        // 获取页面相关文件路径
         const filePaths = page.filePaths;
 
-        // Store the initially generated content BEFORE rendering/potential modification
+        // 在渲染/修改之前存储初始生成的内容（占位符）
         setGeneratedPages(prev => ({
           ...prev,
-          [page.id]: { ...page, content: 'Loading...' } // Placeholder
+          [page.id]: { ...page, content: 'Loading...' } // 使用 "Loading..." 占位符
         }));
-        setOriginalMarkdown(prev => ({ ...prev, [page.id]: '' })); // Clear previous original
+        setOriginalMarkdown(prev => ({ ...prev, [page.id]: '' })); // 清除之前的原始内容
 
-        // Make API call to generate page content
+        // 开始生成页面内容的日志记录
         console.log(`Starting content generation for page: ${page.title}`);
 
-        // Get repository URL
+        // 获取仓库 URL
         const repoUrl = getRepoUrl(effectiveRepoInfo);
 
-        // Create the prompt content - simplified to avoid message dialogs
- const promptContent =
+        // 创建提示词
+        const promptContent =
 `You are an expert technical writer and software architect.
 Your task is to generate a comprehensive and accurate technical wiki page in Markdown format about a specific feature, system, or module within a given software project.
 
@@ -475,7 +477,7 @@ Remember:
 - Structure the document logically for easy understanding by other developers.
 `;
 
-        // Prepare request body
+        // 准备请求体
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const requestBody: Record<string, any> = {
           repo_url: repoUrl,
@@ -486,27 +488,29 @@ Remember:
           }]
         };
 
-        // Add tokens if available
+        // 如果有 token 则将其添加到请求体中
         addTokensToRequestBody(requestBody, currentToken, effectiveRepoInfo.type, selectedProviderState, selectedModelState, isCustomSelectedModelState, customSelectedModelState, language, modelExcludedDirs, modelExcludedFiles);
 
-        // Use WebSocket for communication
+        // 使用 WebSocket 进行通信
         let content = '';
 
         try {
-          // Create WebSocket URL from the server base URL
+          // 从环境变量或默认值创建服务器基础 URL
           const serverBaseUrl = process.env.SERVER_BASE_URL || 'http://localhost:8001';
+          // 替换协议为 WebSocket
           const wsBaseUrl = serverBaseUrl.replace(/^http/, 'ws');
+          // 构建 WebSocket 的 URL
           const wsUrl = `${wsBaseUrl}/ws/chat`;
 
-          // Create a new WebSocket connection
+          // 创建一个新的 WebSocket 连接
           const ws = new WebSocket(wsUrl);
 
-          // Create a promise that resolves when the WebSocket connection is complete
+          // 创建一个 promise，在 WebSocket 连接建立后解析
           await new Promise<void>((resolve, reject) => {
-            // Set up event handlers
+            // 设置事件处理器
             ws.onopen = () => {
               console.log(`WebSocket connection established for page: ${page.title}`);
-              // Send the request as JSON
+              // 发送请求作为 JSON
               ws.send(JSON.stringify(requestBody));
               resolve();
             };
@@ -516,35 +520,35 @@ Remember:
               reject(new Error('WebSocket connection failed'));
             };
 
-            // If the connection doesn't open within 5 seconds, fall back to HTTP
+            // 如果连接在 5 秒内未打开，则回退到 HTTP
             const timeout = setTimeout(() => {
               reject(new Error('WebSocket connection timeout'));
             }, 5000);
 
-            // Clear the timeout if the connection opens successfully
+            // 在连接成功打开时清除超时
             ws.onopen = () => {
               clearTimeout(timeout);
               console.log(`WebSocket connection established for page: ${page.title}`);
-              // Send the request as JSON
+              // 发送请求作为 JSON
               ws.send(JSON.stringify(requestBody));
               resolve();
             };
           });
 
-          // Create a promise that resolves when the WebSocket response is complete
+          // 创建一个 promise，在 WebSocket 响应完成后解析
           await new Promise<void>((resolve, reject) => {
-            // Handle incoming messages
+            // 处理传入的消息
             ws.onmessage = (event) => {
               content += event.data;
             };
 
-            // Handle WebSocket close
+            // 处理 WebSocket 关闭
             ws.onclose = () => {
               console.log(`WebSocket connection closed for page: ${page.title}`);
               resolve();
             };
 
-            // Handle WebSocket errors
+            // 处理 WebSocket 错误
             ws.onerror = (error) => {
               console.error('WebSocket error during message reception:', error);
               reject(new Error('WebSocket error during message reception'));
@@ -553,7 +557,7 @@ Remember:
         } catch (wsError) {
           console.error('WebSocket error, falling back to HTTP:', wsError);
 
-          // Fall back to HTTP if WebSocket fails
+          // 如果 WebSocket 出错则回退到 HTTP
           const response = await fetch(`/api/chat/stream`, {
             method: 'POST',
             headers: {
@@ -568,7 +572,7 @@ Remember:
             throw new Error(`Error generating page content: ${response.status} - ${response.statusText}`);
           }
 
-          // Process the response
+          // 处理响应
           content = '';
           const reader = response.body?.getReader();
           const decoder = new TextDecoder();
@@ -583,7 +587,7 @@ Remember:
               if (done) break;
               content += decoder.decode(value, { stream: true });
             }
-            // Ensure final decoding
+            // 确保最终解码
             content += decoder.decode();
           } catch (readError) {
             console.error('Error reading stream:', readError);
@@ -591,75 +595,77 @@ Remember:
           }
         }
 
-        // Clean up markdown delimiters
+        // 清理 markdown 分隔符
         content = content.replace(/^```markdown\s*/i, '').replace(/```\s*$/i, '');
 
         console.log(`Received content for ${page.title}, length: ${content.length} characters`);
 
-        // Store the FINAL generated content
+        // 存储最终生成的内容
         const updatedPage = { ...page, content };
         setGeneratedPages(prev => ({ ...prev, [page.id]: updatedPage }));
-        // Store this as the original for potential mermaid retries
+        // 将其存储为原始内容以便后续可能的 mermaid 重试
         setOriginalMarkdown(prev => ({ ...prev, [page.id]: content }));
 
         resolve();
       } catch (err) {
         console.error(`Error generating content for page ${page.id}:`, err);
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-        // Update page state to show error
+        // 更新页面状态以显示错误
         setGeneratedPages(prev => ({
           ...prev,
           [page.id]: { ...page, content: `Error generating content: ${errorMessage}` }
         }));
         setError(`Failed to generate content for ${page.title}.`);
-        resolve(); // Resolve even on error to unblock queue
+        resolve(); // 即使出错也 resolve 以解除队列阻塞
       } finally {
-        // Clear the processing flag for this page
-        // This must happen in the finally block to ensure the flag is cleared
-        // even if an error occurs during processing
+        // 清除此页面的处理标志
+        // 必须在 finally 中执行以确保即使发生错误也清除标志
         activeContentRequests.delete(page.id);
 
-        // Mark page as done
+        // 标记页面为已完成
         setPagesInProgress(prev => {
           const next = new Set(prev);
           next.delete(page.id);
           return next;
         });
-        setLoadingMessage(undefined); // Clear specific loading message
+        setLoadingMessage(undefined); // 清除特定加载消息
       }
     });
   }, [generatedPages, currentToken, effectiveRepoInfo, selectedProviderState, selectedModelState, isCustomSelectedModelState, customSelectedModelState, modelExcludedDirs, modelExcludedFiles, language, activeContentRequests, generateFileUrl]);
 
-  // Determine the wiki structure from repository data
-  const determineWikiStructure = useCallback(async (fileTree: string, readme: string, owner: string, repo: string) => {
-    if (!owner || !repo) {
-      setError('Invalid repository information. Owner and repo name are required.');
-      setIsLoading(false);
-      setEmbeddingError(false); // Reset embedding error state
-      return;
-    }
+// 根据仓库文件结构和 README 生成维基结构（包括章节和页面）
+const determineWikiStructure = useCallback(async (fileTree: string, readme: string, owner: string, repo: string) => {
+  // 如果没有提供仓库所有者或名称，抛出错误并停止加载状态
+  if (!owner || !repo) {
+    setError('Invalid repository information. Owner and repo name are required.');
+    setIsLoading(false);
+    setEmbeddingError(false); // 重置嵌入模型相关错误状态
+    return;
+  }
 
-    // Skip if structure request is already in progress
-    if (structureRequestInProgress) {
-      console.log('Wiki structure determination already in progress, skipping duplicate call');
-      return;
-    }
+  // 如果正在处理一个维基结构请求，则跳过重复调用
+  if (structureRequestInProgress) {
+    console.log('Wiki structure determination already in progress, skipping duplicate call');
+    return;
+  }
 
-    try {
-      setStructureRequestInProgress(true);
-      setLoadingMessage(messages.loading?.determiningStructure || 'Determining wiki structure...');
+  try {
+    // 设置结构请求进行中标志为 true
+    setStructureRequestInProgress(true);
 
-      // Get repository URL
-      const repoUrl = getRepoUrl(effectiveRepoInfo);
+    // 设置加载提示信息
+    setLoadingMessage(messages.loading?.determiningStructure || 'Determining wiki structure...');
 
-      // Prepare request body
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const requestBody: Record<string, any> = {
-        repo_url: repoUrl,
-        type: effectiveRepoInfo.type,
-        messages: [{
-          role: 'user',
-content: `Analyze this GitHub repository ${owner}/${repo} and create a wiki structure for it.
+    // 获取仓库 URL
+    const repoUrl = getRepoUrl(effectiveRepoInfo);
+
+    // 构建请求体用于发送到后端 API
+    const requestBody: Record<string, any> = {
+      repo_url: repoUrl,
+      type: effectiveRepoInfo.type,
+      messages: [{
+        role: 'user',
+        content: `Analyze this GitHub repository ${owner}/${repo} and create a wiki structure for it.
 
 1. The complete file tree of the project:
 <file_tree>
@@ -674,12 +680,12 @@ ${readme}
 I want to create a wiki for this repository. Determine the most logical structure for a wiki based on the repository's content.
 
 IMPORTANT: The wiki content will be generated in ${language === 'en' ? 'English' :
-            language === 'ja' ? 'Japanese (日本語)' :
-            language === 'zh' ? 'Mandarin Chinese (中文)' :
-            language === 'zh-tw' ? 'Traditional Chinese (繁體中文)' :
-            language === 'es' ? 'Spanish (Español)' :
-            language === 'kr' ? 'Korean (한国語)' :
-            language === 'vi' ? 'Vietnamese (Tiếng Việt)' : 'English'} language.
+          language === 'ja' ? 'Japanese (日本語)' :
+          language === 'zh' ? 'Mandarin Chinese (中文)' :
+          language === 'zh-tw' ? 'Traditional Chinese (繁體中文)' :
+          language === 'es' ? 'Spanish (Español)' :
+          language === 'kr' ? 'Korean (한国語)' :
+          language === 'vi' ? 'Vietnamese (Tiếng Việt)' : 'English'} language.
 
 When designing the wiki structure, include pages that would benefit from visual diagrams, such as:
 - Architecture overviews
@@ -776,339 +782,313 @@ IMPORTANT:
 2. Each page should focus on a specific aspect of the codebase (e.g., architecture, key features, setup)
 3. The relevant_files should be actual files from the repository that would be used to generate that page
 4. Return ONLY valid XML with the structure specified above, with no markdown code block delimiters`
-        }]
-      };
+      }]
+    };
 
-      // Add tokens if available
-      addTokensToRequestBody(requestBody, currentToken, effectiveRepoInfo.type, selectedProviderState, selectedModelState, isCustomSelectedModelState, customSelectedModelState, language, modelExcludedDirs, modelExcludedFiles);
+    // 添加 token 和其他参数到请求体中
+    addTokensToRequestBody(requestBody, currentToken, effectiveRepoInfo.type, selectedProviderState, selectedModelState, isCustomSelectedModelState, customSelectedModelState, language, modelExcludedDirs, modelExcludedFiles);
 
-      // Use WebSocket for communication
-      let responseText = '';
+    // 使用 WebSocket 发送请求以获取维基结构
+    let responseText = '';
 
-      try {
-        // Create WebSocket URL from the server base URL
-        const serverBaseUrl = process.env.SERVER_BASE_URL || 'http://localhost:8001';
-        const wsBaseUrl = serverBaseUrl.replace(/^http/, 'ws');
-        const wsUrl = `${wsBaseUrl}/ws/chat`;
-        console.log('[ wsUrl ]-793', wsUrl)
+    try {
+      // 创建 WebSocket 连接
+      const serverBaseUrl = process.env.SERVER_BASE_URL || 'http://localhost:8001';
+      const wsBaseUrl = serverBaseUrl.replace(/^http/, 'ws');
+      const wsUrl = `${wsBaseUrl}/ws/chat`;
+      console.log('[ wsUrl ]-793', wsUrl)
 
-        // Create a new WebSocket connection
-        const ws = new WebSocket(wsUrl);
+      const ws = new WebSocket(wsUrl);
 
-        // Create a promise that resolves when the WebSocket connection is complete
-        await new Promise<void>((resolve, reject) => {
-          // Set up event handlers
-          ws.onopen = () => {
-            console.log('WebSocket connection established for wiki structure');
-            // Send the request as JSON
-            ws.send(JSON.stringify(requestBody));
-            resolve();
-          };
-
-          ws.onerror = (error) => {
-            console.error('WebSocket error:', error);
-            reject(new Error('WebSocket connection failed'));
-          };
-
-          // If the connection doesn't open within 5 seconds, fall back to HTTP
-          const timeout = setTimeout(() => {
-            reject(new Error('WebSocket connection timeout'));
-          }, 5000);
-
-          // Clear the timeout if the connection opens successfully
-          ws.onopen = () => {
-            clearTimeout(timeout);
-            console.log('WebSocket connection established for wiki structure');
-            // Send the request as JSON
-            ws.send(JSON.stringify(requestBody));
-            resolve();
-          };
-        });
-
-        // Create a promise that resolves when the WebSocket response is complete
-        await new Promise<void>((resolve, reject) => {
-          // Handle incoming messages
-          ws.onmessage = (event) => {
-            responseText += event.data;
-          };
-
-          // Handle WebSocket close
-          ws.onclose = () => {
-            console.log('WebSocket connection closed for wiki structure');
-            resolve();
-          };
-
-          // Handle WebSocket errors
-          ws.onerror = (error) => {
-            console.error('WebSocket error during message reception:', error);
-            reject(new Error('WebSocket error during message reception'));
-          };
-        });
-      } catch (wsError) {
-        console.error('WebSocket error, falling back to HTTP:', wsError);
-
-        // Fall back to HTTP if WebSocket fails
-        const response = await fetch(`/api/chat/stream`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(requestBody)
-        });
-
-        if (!response.ok) {
-          throw new Error(`Error determining wiki structure: ${response.status}`);
-        }
-
-        // Process the response
-        responseText = '';
-        const reader = response.body?.getReader();
-        const decoder = new TextDecoder();
-
-        if (!reader) {
-          throw new Error('Failed to get response reader');
-        }
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          responseText += decoder.decode(value, { stream: true });
-        }
-      }
-
-      if(responseText.includes('Error preparing retriever: Environment variable OPENAI_API_KEY must be set')) {
-         setEmbeddingError(true);
-         throw new Error('OPENAI_API_KEY environment variable is not set. Please configure your OpenAI API key.');
-       }
-
-       if(responseText.includes('Ollama model') && responseText.includes('not found')) {
-         setEmbeddingError(true);
-         throw new Error('The specified Ollama embedding model was not found. Please ensure the model is installed locally or select a different embedding model in the configuration.');
-       }
-
-        // Clean up markdown delimiters
-      responseText = responseText.replace(/^```(?:xml)?\s*/i, '').replace(/```\s*$/i, '');
-
-      // Extract wiki structure from response
-      const xmlMatch = responseText.match(/<wiki_structure>[\s\S]*?<\/wiki_structure>/m);
-      if (!xmlMatch) {
-        throw new Error('No valid XML found in response');
-      }
-
-      let xmlText = xmlMatch[0];
-      xmlText = xmlText.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
-      // Try parsing with DOMParser
-      const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(xmlText, "text/xml");
-
-      // Check for parsing errors
-      const parseError = xmlDoc.querySelector('parsererror');
-      if (parseError) {
-        // Log the first few elements to see what was parsed
-        const elements = xmlDoc.querySelectorAll('*');
-        if (elements.length > 0) {
-          console.log('First 5 element names:',
-            Array.from(elements).slice(0, 5).map(el => el.nodeName).join(', '));
-        }
-
-        // We'll continue anyway since the XML might still be usable
-      }
-
-      // Extract wiki structure
-      let title = '';
-      let description = '';
-      let pages: WikiPage[] = [];
-
-      // Try using DOM parsing first
-      const titleEl = xmlDoc.querySelector('title');
-      const descriptionEl = xmlDoc.querySelector('description');
-      const pagesEls = xmlDoc.querySelectorAll('page');
-
-      title = titleEl ? titleEl.textContent || '' : '';
-      description = descriptionEl ? descriptionEl.textContent || '' : '';
-
-      // Parse pages using DOM
-      pages = [];
-
-      if (parseError && (!pagesEls || pagesEls.length === 0)) {
-        console.warn('DOM parsing failed, trying regex fallback');
-      }
-
-      pagesEls.forEach(pageEl => {
-        const id = pageEl.getAttribute('id') || `page-${pages.length + 1}`;
-        const titleEl = pageEl.querySelector('title');
-        const importanceEl = pageEl.querySelector('importance');
-        const filePathEls = pageEl.querySelectorAll('file_path');
-        const relatedEls = pageEl.querySelectorAll('related');
-
-        const title = titleEl ? titleEl.textContent || '' : '';
-        const importance = importanceEl ?
-          (importanceEl.textContent === 'high' ? 'high' :
-            importanceEl.textContent === 'medium' ? 'medium' : 'low') : 'medium';
-
-        const filePaths: string[] = [];
-        filePathEls.forEach(el => {
-          if (el.textContent) filePaths.push(el.textContent);
-        });
-
-        const relatedPages: string[] = [];
-        relatedEls.forEach(el => {
-          if (el.textContent) relatedPages.push(el.textContent);
-        });
-
-        pages.push({
-          id,
-          title,
-          content: '', // Will be generated later
-          filePaths,
-          importance,
-          relatedPages
-        });
-      });
-
-      // Extract sections if they exist in the XML
-      const sections: WikiSection[] = [];
-      const rootSections: string[] = [];
-
-      // Try to parse sections if we're in comprehensive view
-      if (isComprehensiveView) {
-        const sectionsEls = xmlDoc.querySelectorAll('section');
-
-        if (sectionsEls && sectionsEls.length > 0) {
-          // Process sections
-          sectionsEls.forEach(sectionEl => {
-            const id = sectionEl.getAttribute('id') || `section-${sections.length + 1}`;
-            const titleEl = sectionEl.querySelector('title');
-            const pageRefEls = sectionEl.querySelectorAll('page_ref');
-            const sectionRefEls = sectionEl.querySelectorAll('section_ref');
-
-            const title = titleEl ? titleEl.textContent || '' : '';
-            const pages: string[] = [];
-            const subsections: string[] = [];
-
-            pageRefEls.forEach(el => {
-              if (el.textContent) pages.push(el.textContent);
-            });
-
-            sectionRefEls.forEach(el => {
-              if (el.textContent) subsections.push(el.textContent);
-            });
-
-            sections.push({
-              id,
-              title,
-              pages,
-              subsections: subsections.length > 0 ? subsections : undefined
-            });
-
-            // Check if this is a root section (not referenced by any other section)
-            let isReferenced = false;
-            sectionsEls.forEach(otherSection => {
-              const otherSectionRefs = otherSection.querySelectorAll('section_ref');
-              otherSectionRefs.forEach(ref => {
-                if (ref.textContent === id) {
-                  isReferenced = true;
-                }
-              });
-            });
-
-            if (!isReferenced) {
-              rootSections.push(id);
-            }
-          });
-        }
-      }
-
-      // Create wiki structure
-      const wikiStructure: WikiStructure = {
-        id: 'wiki',
-        title,
-        description,
-        pages,
-        sections,
-        rootSections
-      };
-
-      setWikiStructure(wikiStructure);
-      setCurrentPageId(pages.length > 0 ? pages[0].id : undefined);
-
-      // Start generating content for all pages with controlled concurrency
-      if (pages.length > 0) {
-        // Mark all pages as in progress
-        const initialInProgress = new Set(pages.map(p => p.id));
-        setPagesInProgress(initialInProgress);
-
-        console.log(`Starting generation for ${pages.length} pages with controlled concurrency`);
-
-        // Maximum concurrent requests
-        const MAX_CONCURRENT = 1;
-
-        // Create a queue of pages
-        const queue = [...pages];
-        let activeRequests = 0;
-
-        // Function to process next items in queue
-        const processQueue = () => {
-          // Process as many items as we can up to our concurrency limit
-          while (queue.length > 0 && activeRequests < MAX_CONCURRENT) {
-            const page = queue.shift();
-            if (page) {
-              activeRequests++;
-              console.log(`Starting page ${page.title} (${activeRequests} active, ${queue.length} remaining)`);
-
-              // Start generating content for this page
-              generatePageContent(page, owner, repo)
-                .finally(() => {
-                  // When done (success or error), decrement active count and process more
-                  activeRequests--;
-                  console.log(`Finished page ${page.title} (${activeRequests} active, ${queue.length} remaining)`);
-
-                  // Check if all work is done (queue empty and no active requests)
-                  if (queue.length === 0 && activeRequests === 0) {
-                    console.log("All page generation tasks completed.");
-                    setIsLoading(false);
-                    setLoadingMessage(undefined);
-                  } else {
-                    // Only process more if there are items remaining and we're under capacity
-                    if (queue.length > 0 && activeRequests < MAX_CONCURRENT) {
-                      processQueue();
-                    }
-                  }
-                });
-            }
-          }
-
-          // Additional check: If the queue started empty or becomes empty and no requests were started/active
-          if (queue.length === 0 && activeRequests === 0 && pages.length > 0 && pagesInProgress.size === 0) {
-            // This handles the case where the queue might finish before the finally blocks fully update activeRequests
-            // or if the initial queue was processed very quickly
-            console.log("Queue empty and no active requests after loop, ensuring loading is false.");
-            setIsLoading(false);
-            setLoadingMessage(undefined);
-          } else if (pages.length === 0) {
-            // Handle case where there were no pages to begin with
-            setIsLoading(false);
-            setLoadingMessage(undefined);
-          }
+      // 等待连接建立
+      await new Promise<void>((resolve, reject) => {
+        ws.onopen = () => {
+          console.log('WebSocket connection established for wiki structure');
+          // 发送消息
+          ws.send(JSON.stringify(requestBody));
+          resolve();
         };
 
-        // Start processing the queue
-        processQueue();
-      } else {
-        // Set loading to false if there were no pages found
-        setIsLoading(false);
-        setLoadingMessage(undefined);
+        ws.onerror = (error) => {
+          console.error('WebSocket error:', error);
+          reject(new Error('WebSocket connection failed'));
+        };
+
+        const timeout = setTimeout(() => {
+          reject(new Error('WebSocket connection timeout'));
+        }, 5000);
+
+        ws.onopen = () => {
+          clearTimeout(timeout);
+          console.log('WebSocket connection established for wiki structure');
+          ws.send(JSON.stringify(requestBody));
+          resolve();
+        };
+      });
+
+      // 接收响应数据
+      await new Promise<void>((resolve, reject) => {
+        ws.onmessage = (event) => {
+          responseText += event.data;
+        };
+
+        ws.onclose = () => {
+          console.log('WebSocket connection closed for wiki structure');
+          resolve();
+        };
+
+        ws.onerror = (error) => {
+          console.error('WebSocket error during message reception:', error);
+          reject(new Error('WebSocket error during message reception'));
+        };
+      });
+    } catch (wsError) {
+      console.error('WebSocket error, falling back to HTTP:', wsError);
+
+      // 如果 WebSocket 失败则回退到 HTTP 请求
+      const response = await fetch(`/api/chat/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Error determining wiki structure: ${response.status}`);
       }
 
-    } catch (error) {
-      console.error('Error determining wiki structure:', error);
-      setIsLoading(false);
-      setError(error instanceof Error ? error.message : 'An unknown error occurred');
-      setLoadingMessage(undefined);
-    } finally {
-      setStructureRequestInProgress(false);
+      // 读取流式响应内容
+      responseText = '';
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (!reader) {
+        throw new Error('Failed to get response reader');
+      }
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        responseText += decoder.decode(value, { stream: true });
+      }
     }
-  }, [generatePageContent, currentToken, effectiveRepoInfo, pagesInProgress.size, structureRequestInProgress, selectedProviderState, selectedModelState, isCustomSelectedModelState, customSelectedModelState, modelExcludedDirs, modelExcludedFiles, language, messages.loading, isComprehensiveView]);
+
+    // 检查返回结果是否包含特定错误信息
+    if(responseText.includes('Error preparing retriever: Environment variable OPENAI_API_KEY must be set')) {
+      setEmbeddingError(true);
+      throw new Error('OPENAI_API_KEY environment variable is not set. Please configure your OpenAI API key.');
+    }
+
+    if(responseText.includes('Ollama model') && responseText.includes('not found')) {
+      setEmbeddingError(true);
+      throw new Error('The specified Ollama embedding model was not found. Please ensure the model is installed locally or select a different embedding model in the configuration.');
+    }
+
+    // 清理 Markdown 分隔符
+    responseText = responseText.replace(/^```(?:xml)?\s*/i, '').replace(/```\s*$/i, '');
+
+    // 提取 XML 响应中的维基结构
+    const xmlMatch = responseText.match(/<wiki_structure>[\s\S]*?<\/wiki_structure>/m);
+    if (!xmlMatch) {
+      throw new Error('No valid XML found in response');
+    }
+
+    let xmlText = xmlMatch[0];
+    xmlText = xmlText.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+
+    // 使用 DOMParser 解析 XML
+    const parser = new DOMParser();
+    const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+
+    // 检查解析错误
+    const parseError = xmlDoc.querySelector('parsererror');
+    if (parseError) {
+      const elements = xmlDoc.querySelectorAll('*');
+      if (elements.length > 0) {
+        console.log('First 5 element names:',
+          Array.from(elements).slice(0, 5).map(el => el.nodeName).join(', '));
+      }
+    }
+
+    // 提取标题、描述和页面列表
+    let title = '';
+    let description = '';
+    let pages: WikiPage[] = [];
+
+    const titleEl = xmlDoc.querySelector('title');
+    const descriptionEl = xmlDoc.querySelector('description');
+    const pagesEls = xmlDoc.querySelectorAll('page');
+
+    title = titleEl ? titleEl.textContent || '' : '';
+    description = descriptionEl ? descriptionEl.textContent || '' : '';
+
+    // 解析页面数据,page是WikiPage类型的数组
+    pages = [];
+
+    if (parseError && (!pagesEls || pagesEls.length === 0)) {
+      console.warn('DOM parsing failed, trying regex fallback');
+    }
+
+    pagesEls.forEach(pageEl => {
+      const id = pageEl.getAttribute('id') || `page-${pages.length + 1}`;
+      const titleEl = pageEl.querySelector('title');
+      const importanceEl = pageEl.querySelector('importance');
+      const filePathEls = pageEl.querySelectorAll('file_path');
+      const relatedEls = pageEl.querySelectorAll('related');
+
+      const title = titleEl ? titleEl.textContent || '' : '';
+      const importance = importanceEl ?
+        (importanceEl.textContent === 'high' ? 'high' :
+          importanceEl.textContent === 'medium' ? 'medium' : 'low') : 'medium';
+
+      const filePaths: string[] = [];
+      filePathEls.forEach(el => {
+        if (el.textContent) filePaths.push(el.textContent);
+      });
+
+      const relatedPages: string[] = [];
+      relatedEls.forEach(el => {
+        if (el.textContent) relatedPages.push(el.textContent);
+      });
+
+      // 创建WikiPage对象,推入到pages数组中
+      pages.push({
+        id,
+        title,
+        content: '', // 内容将在后续生成
+        filePaths,  // 与page相关文件的路径
+        importance,
+        relatedPages
+      });
+    });
+
+    // 提取章节信息
+    const sections: WikiSection[] = [];
+    const rootSections: string[] = [];
+
+    if (isComprehensiveView) {
+      const sectionsEls = xmlDoc.querySelectorAll('section');
+
+      if (sectionsEls && sectionsEls.length > 0) {
+        sectionsEls.forEach(sectionEl => {
+          const id = sectionEl.getAttribute('id') || `section-${sections.length + 1}`;
+          const titleEl = sectionEl.querySelector('title');
+          const pageRefEls = sectionEl.querySelectorAll('page_ref');
+          const sectionRefEls = sectionEl.querySelectorAll('section_ref');
+
+          const title = titleEl ? titleEl.textContent || '' : '';
+          const pages: string[] = [];
+          const subsections: string[] = [];
+
+          pageRefEls.forEach(el => {
+            if (el.textContent) pages.push(el.textContent);
+          });
+
+          sectionRefEls.forEach(el => {
+            if (el.textContent) subsections.push(el.textContent);
+          });
+
+          sections.push({
+            id,
+            title,
+            pages,
+            subsections: subsections.length > 0 ? subsections : undefined
+          });
+
+          let isReferenced = false;
+          sectionsEls.forEach(otherSection => {
+            const otherSectionRefs = otherSection.querySelectorAll('section_ref');
+            otherSectionRefs.forEach(ref => {
+              if (ref.textContent === id) {
+                isReferenced = true;
+              }
+            });
+          });
+
+          if (!isReferenced) {
+            rootSections.push(id);
+          }
+        });
+      }
+    }
+
+    // 创建最终的维基结构对象
+    const wikiStructure: WikiStructure = {
+      id: 'wiki',
+      title,
+      description,
+      pages,  // WikiPage 数组
+      sections, // WikiSection 数组
+      rootSections  // 根章节的 id 数组
+    };
+
+    setWikiStructure(wikiStructure);
+    setCurrentPageId(pages.length > 0 ? pages[0].id : undefined);
+
+    // 遍历pages数组，生成所有页面内容并控制并发
+    if (pages.length > 0) {
+      const initialInProgress = new Set(pages.map(p => p.id));
+      setPagesInProgress(initialInProgress);
+
+      console.log(`Starting generation for ${pages.length} pages with controlled concurrency`);
+
+      const MAX_CONCURRENT = 1;
+      const queue = [...pages];
+      let activeRequests = 0;
+
+      // 通过processQueue队列机制，依次调用llm对每个page进行内容生成
+      const processQueue = () => {
+        while (queue.length > 0 && activeRequests < MAX_CONCURRENT) {
+          const page = queue.shift();
+          if (page) {
+            activeRequests++;
+            console.log(`Starting page ${page.title} (${activeRequests} active, ${queue.length} remaining)`);
+
+            // 调用 generatePageContent 函数，进行页面内容生成
+            generatePageContent(page, owner, repo)
+              .finally(() => {
+                activeRequests--;
+                console.log(`Finished page ${page.title} (${activeRequests} active, ${queue.length} remaining)`);
+
+                if (queue.length === 0 && activeRequests === 0) {
+                  console.log("All page generation tasks completed.");
+                  setIsLoading(false);
+                  setLoadingMessage(undefined);
+                } else {
+                  if (queue.length > 0 && activeRequests < MAX_CONCURRENT) {
+                    processQueue();
+                  }
+                }
+              });
+          }
+        }
+
+        if (queue.length === 0 && activeRequests === 0 && pages.length > 0 && pagesInProgress.size === 0) {
+          console.log("Queue empty and no active requests after loop, ensuring loading is false.");
+          setIsLoading(false);
+          setLoadingMessage(undefined);
+        } else if (pages.length === 0) {
+          setIsLoading(false);
+          setLoadingMessage(undefined);
+        }
+      };
+
+      processQueue();
+    } else {
+      setIsLoading(false);
+      setLoadingMessage(undefined);
+    }
+
+  } catch (error) {
+    console.error('Error determining wiki structure:', error);
+    setIsLoading(false);
+    setError(error instanceof Error ? error.message : 'An unknown error occurred');
+    setLoadingMessage(undefined);
+  } finally {
+    setStructureRequestInProgress(false);
+  }
+}, [generatePageContent, currentToken, effectiveRepoInfo, pagesInProgress.size, structureRequestInProgress, selectedProviderState, selectedModelState, isCustomSelectedModelState, customSelectedModelState, modelExcludedDirs, modelExcludedFiles, language, messages.loading, isComprehensiveView]);
 
   // Fetch repository structure using GitHub or GitLab API
   const fetchRepositoryStructure = useCallback(async () => {
@@ -1428,7 +1408,7 @@ IMPORTANT:
         }
       }
 
-      // Now determine the wiki structure
+      // 调用 determineWikiStructure 确定仓库的 wiki 结构 
       await determineWikiStructure(fileTreeData, readmeContent, owner, repo);
 
     } catch (error) {
@@ -1634,7 +1614,7 @@ IMPORTANT:
     // No direct call to fetchRepositoryStructure here, let the useEffect handle it based on effectRan.current = false.
   }, [effectiveRepoInfo, language, messages.loading, activeContentRequests, selectedProviderState, selectedModelState, isCustomSelectedModelState, customSelectedModelState, modelExcludedDirs, modelExcludedFiles, isComprehensiveView, authCode, authRequired]);
 
-  // Start wiki generation when component mounts
+  // 当此页面打开的时候，开始wiki内容生成
   useEffect(() => {
     if (effectRan.current === false) {
       effectRan.current = true; // Set to true immediately to prevent re-entry due to StrictMode
@@ -2165,7 +2145,7 @@ IMPORTANT:
 
       {/* Ask Modal - Always render but conditionally show/hide */}
       <div className={`fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 transition-opacity duration-300 ${isAskModalOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-        <div className="bg-[var(--card-bg)] rounded-lg shadow-xl w-full max-w-3xl max-h-[80vh] flex flex-col">
+        <div className="bg-[var(--card-bg)] rounded-lg shadow-xl w-[80vw] h-[80vh] flex flex-col overflow-auto">
           <div className="flex items-center justify-end p-3 absolute top-0 right-0 z-10">
             <button
               onClick={() => {

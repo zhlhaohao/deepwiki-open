@@ -220,6 +220,7 @@ export default function Home() {
     setIsConfigModalOpen(true);
   };
 
+  // 如果认证是必需的，用户必须提供认证码。validateAuthCode 函数用于验证认证码的有效性
   const validateAuthCode = async () => {
     try {
       if(authRequired) {
@@ -372,7 +373,7 @@ export default function Home() {
             </div>
           </form>
 
-          {/* Configuration Modal */}
+          {/* 配置模态对话框 Configuration Modal */}
           <ConfigurationModal
             isOpen={isConfigModalOpen}
             onClose={() => setIsConfigModalOpen(false)}

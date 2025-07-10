@@ -16,6 +16,10 @@ COPY package.json package-lock.json next.config.ts tsconfig.json tailwind.config
 COPY src/ ./src/
 COPY public/ ./public/
 # Increase Node.js memory limit for build and disable telemetry
+
+ENV PORT=8001
+ENV SERVER_BASE_URL=http://localhost:${PORT:-8001}
+
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN NODE_ENV=production npm run build
@@ -103,9 +107,7 @@ wait -n\n\
 exit $?' > /app/start.sh && chmod +x /app/start.sh
 
 # Set environment variables
-ENV PORT=8001
 ENV NODE_ENV=production
-ENV SERVER_BASE_URL=http://localhost:${PORT:-8001}
 
 # Create empty .env file (will be overridden if one exists at runtime)
 RUN touch .env

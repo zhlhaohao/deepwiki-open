@@ -266,7 +266,7 @@ const Ask: React.FC<AskProps> = ({
   // WebSocket reference
   const webSocketRef = useRef<WebSocket | null>(null);
 
-  // Function to continue research automatically
+  // 继续执行下一步deep research
   const continueResearch = async () => {
     if (!deepResearch || researchComplete || !response || isLoading) return;
 
@@ -468,7 +468,7 @@ const Ask: React.FC<AskProps> = ({
     }
   };
 
-  // Effect to continue research when response is updated
+  // 收到响应后，开始下一步 deep research
   useEffect(() => {
     if (deepResearch && response && !isLoading && !researchComplete) {
       const isComplete = checkIfResearchComplete(response);
@@ -486,7 +486,7 @@ const Ask: React.FC<AskProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [response, isLoading, deepResearch, researchComplete, researchIteration]);
 
-  // Effect to update research stages when the response changes
+  // 响应改变后，更新研究的阶段
   useEffect(() => {
     if (deepResearch && response && !isLoading) {
       // Try to extract a research stage from the response
@@ -518,6 +518,7 @@ const Ask: React.FC<AskProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [response, isLoading, deepResearch, researchIteration]);
 
+  // 点击提问按钮执行提问
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -526,7 +527,7 @@ const Ask: React.FC<AskProps> = ({
     handleConfirmAsk();
   };
 
-  // Handle confirm and send request
+  // 执行提问
   const handleConfirmAsk = async () => {
     setIsLoading(true);
     setResponse('');
@@ -540,11 +541,11 @@ const Ask: React.FC<AskProps> = ({
         content: deepResearch ? `[DEEP RESEARCH] ${question}` : question
       };
 
-      // Set initial conversation history
+      // 对话历史数组初始化：添加初始消息
       const newHistory: Message[] = [initialMessage];
       setConversationHistory(newHistory);
 
-      // Prepare request body
+      // 构建消息体
       const requestBody: ChatCompletionRequest = {
         repo_url: getRepoUrl(repoInfo),
         type: repoInfo.type,
@@ -564,15 +565,16 @@ const Ask: React.FC<AskProps> = ({
 
       let fullResponse = '';
 
-      // Create a new WebSocket connection
+      // 创建到后台 ${wsBaseUrl}/ws/chat 的WebSocket连接
       webSocketRef.current = createChatWebSocket(
         requestBody,
-        // Message handler
+        // 收到消息
         (message: string) => {
           fullResponse += message;
+          // 更新response状态
           setResponse(fullResponse);
 
-          // Extract research stage if this is a deep research response
+          // 如果这是一个 deep research 响应，则更新research阶段
           if (deepResearch) {
             const stage = extractResearchStage(fullResponse, 1); // First iteration
             if (stage) {
@@ -725,7 +727,8 @@ const Ask: React.FC<AskProps> = ({
           <div className="border-t border-gray-200 dark:border-gray-700 mt-4">
             <div
               ref={responseRef}
-              className="p-4 max-h-[500px] overflow-y-auto"
+              className="p-4 h-full overflow-y-auto"
+              style={{ maxHeight: '80%' }}
             >
               <Markdown content={response} />
             </div>

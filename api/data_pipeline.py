@@ -200,6 +200,7 @@ def read_all_documents(
 ):
     """
     Recursively reads all documents in a directory and its subdirectories.
+    遍历目录和子目录，读取文件内容
 
     Args:
         path (str): The root directory path.
@@ -466,7 +467,7 @@ def read_all_documents(
 def prepare_data_pipeline(is_ollama_embedder: bool = None):
     """
     Creates and returns the data transformation pipeline.
-    创建文件转换管道。文件 --> 嵌入向量
+    创建文件转换管道。文件切割 --> 嵌入向量
 
     Args:
         is_ollama_embedder (bool, optional): Whether to use Ollama for embedding.
@@ -505,6 +506,7 @@ def transform_documents_and_save_to_db(
 ) -> LocalDB:
     """
     Transforms a list of documents and saves them to a local database.
+    将documents进行转换（切分、向量化）并保存到本地数据库。
 
     Args:
         documents (list): A list of `Document` objects.
@@ -578,7 +580,13 @@ def get_github_file_content(
             headers["Authorization"] = f"token {access_token}"
         logger.info(f"Fetching file content from GitHub API: {api_url}")
         try:
-            response = requests.get(api_url, headers=headers)
+            proxy_url = os.getenv("SYSTEM_PROXY")
+            if proxy_url:
+                proxies = {"http": proxy_url, "https": proxy_url}
+                response = requests.get(api_url, headers=headers, proxies=proxies)
+            else:
+                response = requests.get(api_url, headers=headers)
+
             response.raise_for_status()
         except RequestException as e:
             raise ValueError(f"Error fetching file content: {e}")
@@ -656,7 +664,13 @@ def get_gitlab_file_content(
             headers["PRIVATE-TOKEN"] = access_token
         logger.info(f"Fetching file content from GitLab API: {api_url}")
         try:
-            response = requests.get(api_url, headers=headers)
+            proxy_url = os.getenv("SYSTEM_PROXY")
+            if proxy_url:
+                proxies = {"http": proxy_url, "https": proxy_url}
+                response = requests.get(api_url, headers=headers, proxies=proxies)
+            else:
+                response = requests.get(api_url, headers=headers)
+                
             response.raise_for_status()
             content = response.text
         except RequestException as e:
@@ -716,7 +730,13 @@ def get_bitbucket_file_content(
             headers["Authorization"] = f"Bearer {access_token}"
         logger.info(f"Fetching file content from Bitbucket API: {api_url}")
         try:
-            response = requests.get(api_url, headers=headers)
+            proxy_url = os.getenv("SYSTEM_PROXY")
+            if proxy_url:
+                proxies = {"http": proxy_url, "https": proxy_url}
+                response = requests.get(api_url, headers=headers, proxies=proxies)
+            else:
+                response = requests.get(api_url, headers=headers)
+                
             if response.status_code == 200:
                 content = response.text
             elif response.status_code == 404:
@@ -751,6 +771,7 @@ def get_file_content(
 ) -> str:
     """
     Retrieves the content of a file from a Git repository (GitHub or GitLab).
+    从github读取文件的内容（文本）
 
     Args:
         repo_url (str): The URL of the repository
@@ -874,6 +895,7 @@ class DatabaseManager:
                 )
                 logger.info(f"Extracted repo name: {repo_name}")
 
+                # 仓库的保存目录，存放仓库的源码
                 save_repo_dir = os.path.join(root_path, "repos", repo_name)
 
                 # Check if the repository directory already exists and is not empty
@@ -915,6 +937,7 @@ class DatabaseManager:
     ) -> List[Document]:
         """
         Prepare the indexed database for the repository.
+        创建该仓库的向量数据库,然后对仓库的文件进行向量化并存储
 
         Args:
             is_ollama_embedder (bool, optional): Whether to use Ollama for embedding.
@@ -944,7 +967,7 @@ class DatabaseManager:
 
         # prepare the database
         logger.info("Creating new database...")
-        # 读取文件的内容
+        # 从本地仓库目录，读取文件的内容
         documents = read_all_documents(
             self.repo_paths["save_repo_dir"],
             is_ollama_embedder=is_ollama_embedder,
@@ -953,7 +976,7 @@ class DatabaseManager:
             included_dirs=included_dirs,
             included_files=included_files,
         )
-        # 把文件进行转换
+        # 把文件进行转换(切分和向量化)
         self.db = transform_documents_and_save_to_db(
             documents,
             self.repo_paths["save_db_file"],

@@ -137,7 +137,7 @@ async def handle_websocket_chat(websocket: WebSocket):
             await websocket.close()
             return
 
-        # 处理之前的对话历史以构建记忆
+        # 将对话历史添加到RAG检索器的记忆中
         for i in range(0, len(request.messages) - 1, 2):
             if i + 1 < len(request.messages):
                 user_msg = request.messages[i]
@@ -155,7 +155,7 @@ async def handle_websocket_chat(websocket: WebSocket):
         # 默认迭代次数为1
         research_iteration = 1
 
-        # 遍历所有消息以检测是否包含 [DEEP RESEARCH] 标记
+        # 遍历所有历史消息以检测是否包含 [DEEP RESEARCH] 标记
         for msg in request.messages:
             if hasattr(msg, 'content') and msg.content and "[DEEP RESEARCH]" in msg.content:
                 # 如果发现标记，则启用深度研究模式
@@ -195,6 +195,7 @@ async def handle_websocket_chat(websocket: WebSocket):
         context_text = ""
         retrieved_documents = None
 
+        # 检索出与问题相关的代码文件的上下文，放到context_text
         if not input_too_large:
             try:
                 # 如果提供了文件路径，修改 RAG 查询以聚焦该文件
@@ -243,6 +244,7 @@ async def handle_websocket_chat(websocket: WebSocket):
             except Exception as e:
                 logger.error(f"Error retrieving documents: {str(e)}")
                 context_text = ""
+
         # Get repository information
         repo_url = request.repo_url
         repo_name = repo_url.split("/")[-1] if "/" in repo_url else repo_url
@@ -255,7 +257,7 @@ async def handle_websocket_chat(websocket: WebSocket):
         supported_langs = configs["lang_config"]["supported_languages"]
         language_name = supported_langs.get(language_code, "English")
 
-        # Create system prompt
+        # 创建系统提示词
         if is_deep_research:
             # Check if this is the first iteration
             is_first_iteration = research_iteration == 1
@@ -399,7 +401,7 @@ This file contains...
 - Use markdown formatting to improve readability
 </style>"""
 
-        # Fetch file content if provided
+        # 如果用户的问题聚焦了某一个文件，那么从github下载该文件的内容
         file_content = ""
         if request.filePath:
             try:
@@ -409,41 +411,54 @@ This file contains...
                 logger.error(f"Error retrieving file content: {str(e)}")
                 # Continue without file content if there's an error
 
-        # Format conversation history
+        # 格式化对话历史，用于构建最终提示词中的上下文部分
         conversation_history = ""
+        # 遍历 RAG 实例的记忆（对话历史）
         for turn_id, turn in request_rag.memory().items():
+            # 确保当前对话轮次具有用户查询和助手响应属性，并且 turn_id 不是整数类型
             if not isinstance(turn_id, int) and hasattr(turn, 'user_query') and hasattr(turn, 'assistant_response'):
+                # 将每一轮对话以 XML 格式拼接到 conversation_history 字符串中
                 conversation_history += f"<turn>\n<user>{turn.user_query.query_str}</user>\n<assistant>{turn.assistant_response.response_str}</assistant>\n</turn>\n"
 
-        # Create the prompt with context
+        # 创建最终的 prompt，将系统提示词拼接进去
         prompt = f"/no_think {system_prompt}\n\n"
 
+        # 如果存在对话历史，则将其添加到 prompt 中
         if conversation_history:
             prompt += f"<conversation_history>\n{conversation_history}</conversation_history>\n\n"
 
-        # Check if filePath is provided and fetch file content if it exists
+        # 检查是否提供了 filePath 参数，并且成功获取了文件内容
         if file_content:
-            # Add file content to the prompt after conversation history
+            # 若有文件内容，将其以 XML 格式添加到 prompt 中，路径作为标签属性
             prompt += f"<currentFileContent path=\"{request.filePath}\">\n{file_content}\n</currentFileContent>\n\n"
 
-        # Only include context if it's not empty
+        # 定义上下文的起始和结束标记
         CONTEXT_START = "<START_OF_CONTEXT>"
         CONTEXT_END = "<END_OF_CONTEXT>"
+        # 如果 context_text（RAG检索出来的代码片段） 不为空，则将其包裹在上下文标记中添加到 prompt
         if context_text.strip():
             prompt += f"{CONTEXT_START}\n{context_text}\n{CONTEXT_END}\n\n"
         else:
-            # Add a note that we're skipping RAG due to size constraints or because it's the isolated API
+            # 否则记录日志并添加一个说明，表示跳过 RAG 上下文
             logger.info("No context available from RAG")
             prompt += "<note>Answering without retrieval augmentation.</note>\n\n"
 
+        # 最后将用户的查询拼接到 prompt 中
         prompt += f"<query>\n{query}\n</query>\n\nAssistant: "
 
+        logger.info(f"449- Prompt:\n{prompt}")
+
+        # 获取模型配置参数
         model_config = get_model_config(request.provider, request.model)["model_kwargs"]
 
+        # 根据请求中指定的 provider 分支处理不同的模型客户端初始化和参数设置
         if request.provider == "ollama":
+            # 在 Ollama 提示末尾添加 /no_think 指令，避免模型提前思考
             prompt += " /no_think"
 
+            # 初始化 Ollama 客户端实例
             model = OllamaClient()
+            # 构建 Ollama 的参数字典，包含模型名称、是否流式输出、以及选项参数如温度、top_p、上下文长度等
             model_kwargs = {
                 "model": model_config["model"],
                 "stream": True,
@@ -454,6 +469,7 @@ This file contains...
                 }
             }
 
+            # 调用 convert_inputs_to_api_kwargs 方法将输入和参数转换为 API 兼容的 kwargs 格式
             api_kwargs = model.convert_inputs_to_api_kwargs(
                 input=prompt,
                 model_kwargs=model_kwargs,
@@ -462,55 +478,63 @@ This file contains...
         elif request.provider == "openrouter":
             logger.info(f"Using OpenRouter with model: {request.model}")
 
-            # Check if OpenRouter API key is set
+            # 检查 OPENROUTER_API_KEY 是否配置，未配置时记录警告但继续执行
             if not OPENROUTER_API_KEY:
                 logger.warning("OPENROUTER_API_KEY not configured, but continuing with request")
-                # We'll let the OpenRouterClient handle this and return a friendly error message
+                # OpenRouterClient 会处理该情况并返回友好的错误信息
 
+            # 初始化 OpenRouter 客户端实例
             model = OpenRouterClient()
+            # 构建 OpenRouter 的参数字典，包括模型名称、是否流式输出、温度等
             model_kwargs = {
                 "model": request.model,
                 "stream": True,
                 "temperature": model_config["temperature"]
             }
-            # Only add top_p if it exists in the model config
+            # 仅当 top_p 存在于 model_config 中时才添加
             if "top_p" in model_config:
                 model_kwargs["top_p"] = model_config["top_p"]
 
+            # 转换输入和参数为 API 兼容的 kwargs 格式
             api_kwargs = model.convert_inputs_to_api_kwargs(
                 input=prompt,
                 model_kwargs=model_kwargs,
                 model_type=ModelType.LLM
             )
         elif request.provider == "openai":
+            # 记录日志：使用 OpenAI 协议及指定模型
             logger.info(f"Using Openai protocol with model: {request.model}")
 
-            # Check if an API key is set for Openai
+            # 检查 OPENAI_API_KEY 是否配置，未配置时记录警告但继续执行
             if not OPENAI_API_KEY:
                 logger.warning("OPENAI_API_KEY not configured, but continuing with request")
-                # We'll let the OpenAIClient handle this and return an error message
+                # OpenAIClient 会处理该情况并返回错误信息
 
-            # Initialize Openai client
+            # 初始化 OpenAI 客户端实例
             model = OpenAIClient()
+            # 构建 OpenAI 的参数字典，包括模型名称、是否流式输出、温度等
             model_kwargs = {
                 "model": request.model,
                 "stream": True,
                 "temperature": model_config["temperature"]
             }
-            # Only add top_p if it exists in the model config
+            # 仅当 top_p 存在于 model_config 中时才添加
             if "top_p" in model_config:
                 model_kwargs["top_p"] = model_config["top_p"]
 
+            # 转换输入和参数为 API 兼容的 kwargs 格式
             api_kwargs = model.convert_inputs_to_api_kwargs(
                 input=prompt,
                 model_kwargs=model_kwargs,
                 model_type=ModelType.LLM
             )
         elif request.provider == "azure":
+            # 记录日志：使用 Azure AI 及指定模型
             logger.info(f"Using Azure AI with model: {request.model}")
 
-            # Initialize Azure AI client
+            # 初始化 Azure AI 客户端实例
             model = AzureAIClient()
+            # 构建 Azure AI 的参数字典，包括模型名称、是否流式输出、温度、top_p 等
             model_kwargs = {
                 "model": request.model,
                 "stream": True,
@@ -518,13 +542,14 @@ This file contains...
                 "top_p": model_config["top_p"]
             }
 
+            # 转换输入和参数为 API 兼容的 kwargs 格式
             api_kwargs = model.convert_inputs_to_api_kwargs(
                 input=prompt,
                 model_kwargs=model_kwargs,
                 model_type=ModelType.LLM
             )
         else:
-            # Initialize Google Generative AI model
+            # 默认情况下使用 Google Generative AI 模型
             model = genai.GenerativeModel(
                 model_name=model_config["model"],
                 generation_config={
@@ -532,9 +557,7 @@ This file contains...
                     "top_p": model_config["top_p"],
                     "top_k": model_config["top_k"]
                 }
-            )
-
-        # Process the response based on the provider
+            )        # Process the response based on the provider
         try:
             if request.provider == "ollama":
                 # Get the response and handle it properly using the previously created api_kwargs
@@ -569,6 +592,7 @@ This file contains...
                     logger.info("Making Openai API call")
                     response = await model.acall(api_kwargs=api_kwargs, model_type=ModelType.LLM)
                     # Handle streaming response from Openai
+                    ans = ""
                     async for chunk in response:
                         choices = getattr(chunk, "choices", [])
                         if len(choices) > 0:
@@ -576,7 +600,10 @@ This file contains...
                             if delta is not None:
                                 text = getattr(delta, "content", None)
                                 if text is not None:
+                                    ans += text
                                     await websocket.send_text(text)
+
+                    logger.info(f"602- Openai API response:\n{ans}")    
                     # Explicitly close the WebSocket connection after the response is complete
                     await websocket.close()
                 except Exception as e_openai:
@@ -691,9 +718,13 @@ This file contains...
                             fallback_response = await model.acall(api_kwargs=fallback_api_kwargs, model_type=ModelType.LLM)
 
                             # Handle streaming fallback_response from Openai
+                            ans = ""
                             async for chunk in fallback_response:
                                 text = chunk if isinstance(chunk, str) else getattr(chunk, 'text', str(chunk))
+                                ans += text
                                 await websocket.send_text(text)
+
+                            logger.info(f"721- Openai API response:\n{ans}")    
                         except Exception as e_fallback:
                             logger.error(f"Error with Openai API fallback: {str(e_fallback)}")
                             error_msg = f"\nError with Openai API fallback: {str(e_fallback)}\n\nPlease check that you have set the OPENAI_API_KEY environment variable with a valid API key."

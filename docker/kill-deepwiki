@@ -1,0 +1,1 @@
+docker compose -f /home/lianghao/github/deepwiki-open/docker/docker-compose.yml down
