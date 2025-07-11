@@ -19,9 +19,12 @@ services:
       - ~/.adalflow:/root/.adalflow      # Persist repository and embedding data
       - ./logs:/app/api/logs          # Persist log files across container restarts
       - ./config:/app/api/config
+      - /Users/lianghao/github:/github
+      - /mnt/c/Users/lianghao/github:/win_github
     # Resource limits for docker-compose up (not Swarm mode)
     mem_limit: 6g
     mem_reservation: 2g
+    restart: always
     # Health check configuration
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${PORT:-8001}/health"]
